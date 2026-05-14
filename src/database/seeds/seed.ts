@@ -1,9 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../../app.module';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Group } from '../../group/entities/group.entity';
-import { Product } from '../../product/entities/product.entity';
-import { Parameter } from '../../parameters/entities/parameter.entity';
+import { Group, Parameter, Product } from '../../sales/entities';
 
 const run = async () => {
   // 1. Creamos el contexto de NestJS (sin levantar el servidor HTTP, solo lógica)
@@ -21,11 +19,11 @@ const run = async () => {
     if (existingGroups === 0) {
       console.log('🌱 Sembrando Groups...');
       const groups = [
-        groupRepo.create({ id: 1, name: 'SERVICIOS VARIOS', account_id: 1 }),
-        groupRepo.create({ id: 2, name: 'AUXILIO MORTUORIO', account_id: 2 }),
-        groupRepo.create({ id: 3, name: 'FONDO DE RETIRO Y CUOTA MORTUORIA', account_id: 4 }),
-        groupRepo.create({ id: 4, name: 'PRÉSTAMOS Y DIVIDENDOS', account_id: 3 }),
-        groupRepo.create({ id: 5, name: 'HOTEL PARÍS', account_id: 5 }),
+        groupRepo.create({ id: 1, name: 'SERVICIOS VARIOS', accountId: 1 }),
+        groupRepo.create({ id: 2, name: 'AUXILIO MORTUORIO', accountId: 2 }),
+        groupRepo.create({ id: 3, name: 'FONDO DE RETIRO Y CUOTA MORTUORIA', accountId: 4 }),
+        groupRepo.create({ id: 4, name: 'PRÉSTAMOS Y DIVIDENDOS', accountId: 3 }),
+        groupRepo.create({ id: 5, name: 'HOTEL PARÍS', accountId: 5 }),
       ];
       await groupRepo.save(groups);
       console.log(`✅ Groups insertados: ${groups.length}`);
@@ -98,8 +96,8 @@ const run = async () => {
       console.log('🌱 Sembrando Parameters...');
       const params = paramRepo.create({
         id: 1,
-        max_amount: 0, // 0 = Sin límite
-        max_products: 1, // Límite actual requerido
+        maxAmount: 0, // 0 = Sin límite
+        maxProducts: 1, // Límite actual requerido
       });
       await paramRepo.save(params);
       console.log(`✅ Parameters insertados: 1`);
