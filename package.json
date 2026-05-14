@@ -20,15 +20,16 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed:run": "node ./node_modules/typeorm-extension/bin/cli.cjs seed:run -d src/database/data-source.ts",
     "seed:create": "node ./node_modules/typeorm-extension/bin/cli.cjs seed:create",
-    "migration:show": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:show -d src/database/data-source.ts",
-    "migration:create": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:create src/database/migrations/",
-    "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/database/data-source.ts",
-    "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert -d src/database/data-source.ts"
+    "migration:show": "ts-node -r tsconfig-paths/register src/database/scripts/migration-show.ts",
+    "migration:create": "ts-node -r tsconfig-paths/register src/database/scripts/migration-create.ts",
+    "migration:run": "ts-node -r tsconfig-paths/register src/database/scripts/migration-run.ts",
+    "migration:revert": "ts-node -r tsconfig-paths/register src/database/scripts/migration-revert.ts"
   },
   "dependencies": {
     "@nestjs/common": "11.1.13",
     "@nestjs/config": "4.0.3",
     "@nestjs/core": "11.1.13",
+    "@nestjs/mapped-types": "*",
     "@nestjs/microservices": "11.1.13",
     "@nestjs/platform-express": "11.1.13",
     "@nestjs/typeorm": "11.0.0",

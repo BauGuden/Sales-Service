@@ -25,6 +25,11 @@ pnpm install
 
 # Correr proyecto en modo desarrollo
 pnpm run start:dev
+```
+
+## Generación de recursos
+
+```bash
 
 # Crear nuevo Modulo
 nest g res nombreModulo
@@ -33,15 +38,29 @@ nest g res nombreModulo
 pnpm seed:create --name src/database/seeds/nombre_seed.ts
 # Correr seeder
 pnpm seed:run --name src/database/seeds/{code}-nombre_seed.ts
+```
 
-# Crear migración
-pnpm typeorm migration:create src/database/migrations/NombreDeLaMigración
-# Correr migración
-pnpm migration:run
-# Revertir migración
-pnpm migration:revert
+## Migraciones
+
+Las migraciones viven en `src/database/migrations`.
+
+```bash
+# Crear una migración vacía
+pnpm migration:create nombre-de-la-migracion
+
 # Ver estado de migraciones
 pnpm migration:show
+
+# Ejecutar migraciones
+pnpm migration:run
+
+# Revertir la última migración ejecutada
+pnpm migration:revert
+```
+
+## Publicar cambios
+
+```bash
 
 # Para enlazar a un nuevo repositorio
 git remote add origin https://github.com/tu-usuario/{nombre_nuevo-microservice}.git

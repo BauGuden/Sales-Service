@@ -1,24 +1,29 @@
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { SeederOptions } from 'typeorm-extension';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
-import { DbEnvs } from 'src/config';
+import { dbEnvs } from 'src/config';
+
+const isTsRuntime = __filename.endsWith('.ts');
 
 export const options: DataSourceOptions & SeederOptions = {
   type: 'postgres' as const,
-  host: DbEnvs.dbHost,
-  port: DbEnvs.dbPort,
-  database: DbEnvs.dbDatabase,
-  username: DbEnvs.dbUsername,
-  password: DbEnvs.dbPassword,
-  synchronize: DbEnvs.dbSynchronize,
+  host: dbEnvs.dbHost,
+  port: dbEnvs.dbPort,
+  database: dbEnvs.dbDatabase,
+  username: dbEnvs.dbUsername,
+  password: dbEnvs.dbPassword,
+  synchronize: dbEnvs.dbSynchronize,
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   namingStrategy: new SnakeNamingStrategy(),
 
   seeds: ['src/database/seeds/**/*{.ts,.js}'],
   seedTracking: true,
 
-  schema: DbEnvs.dbSchema,
-  migrations: ['dist/database/migrations/**/*{.ts,.js}'],
+  schema: dbEnvs.dbSchema,
+  migrationsTableName: 'migrations',
+  migrations: isTsRuntime
+    ? ['src/database/migrations/**/*.ts']
+    : ['dist/database/migrations/**/*.js'],
 };
 
 export default new DataSource(options);
