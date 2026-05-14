@@ -2,43 +2,40 @@ import 'dotenv/config';
 import * as joi from 'joi';
 
 interface EnvVars {
-  natsServers: string[];
-  dbPassword: string;
-  dbDatabase: string;
-  dbHost: string;
-  dbPort: number;
-  dbUsername: string;
-  dbSynchronize: boolean;
-  dbSchema: string;
+  NATS_SERVERS: string[];
+  DB_PASSWORD: string;
+  DB_DATABASE: string;
+  DB_HOST: string;
+  DB_PORT: number;
+  DB_USERNAME: string;
+  DB_SYNCHRONIZE: boolean;
+  DB_SCHEMA: string;
 }
 
 const envsSchema = joi
   .object({
-    natsServers: joi.array().items(joi.string().trim()).min(1).required(),
-    dbPassword: joi.string().required(),
-    dbDatabase: joi.string().required(),
-    dbHost: joi.string().required(),
-    dbPort: joi.number().port().required(),
-    dbUsername: joi.string().required(),
-    dbSynchronize: joi.string().valid('true', 'false').default('false'),
-    dbSchema: joi.string().default('public'),
+    NATS_SERVERS: joi.array().items(joi.string().trim()).min(1).required(),
+    DB_PASSWORD: joi.string().required(),
+    DB_DATABASE: joi.string().required(),
+    DB_HOST: joi.string().required(),
+    DB_PORT: joi.number().port().required(),
+    DB_USERNAME: joi.string().required(),
+    DB_SYNCHRONIZE: joi.string().valid('true', 'false').default('false'),
+    DB_SCHEMA: joi.string().default('public'),
   })
   .unknown(true);
 
-const readEnv = (camelKey: string, legacyKey: string) =>
-  process.env[camelKey] ?? process.env[legacyKey];
-
 const { error, value } = envsSchema.validate({
-  natsServers: readEnv('natsServers', 'NATS_SERVERS')
-    ?.split(',')
-    .map((server) => server.trim()),
-  dbPassword: readEnv('dbPassword', 'DB_PASSWORD'),
-  dbDatabase: readEnv('dbDatabase', 'DB_DATABASE'),
-  dbHost: readEnv('dbHost', 'DB_HOST'),
-  dbPort: readEnv('dbPort', 'DB_PORT'),
-  dbUsername: readEnv('dbUsername', 'DB_USERNAME'),
-  dbSynchronize: readEnv('dbSynchronize', 'DB_SYNCHRONIZE')?.toLowerCase(),
-  dbSchema: readEnv('dbSchema', 'DB_SCHEMA'),
+  NATS_SERVERS: process.env.NATS_SERVERS?.split(',').map((server) =>
+    server.trim(),
+  ),
+  DB_PASSWORD: process.env.DB_PASSWORD,
+  DB_DATABASE: process.env.DB_DATABASE,
+  DB_HOST: process.env.DB_HOST,
+  DB_PORT: process.env.DB_PORT,
+  DB_USERNAME: process.env.DB_USERNAME,
+  DB_SYNCHRONIZE: process.env.DB_SYNCHRONIZE?.toLowerCase(),
+  DB_SCHEMA: process.env.DB_SCHEMA,
 });
 
 if (error) {
@@ -47,19 +44,19 @@ if (error) {
 
 const envVars: EnvVars = {
   ...value,
-  dbSynchronize: value.dbSynchronize === 'true',
+  DB_SYNCHRONIZE: value.DB_SYNCHRONIZE === 'true',
 };
 
 export const natsEnvs = {
-  natsServers: envVars.natsServers,
+  natsServers: envVars.NATS_SERVERS,
 };
 
 export const dbEnvs = {
-  dbPassword: envVars.dbPassword,
-  dbDatabase: envVars.dbDatabase,
-  dbHost: envVars.dbHost,
-  dbPort: envVars.dbPort,
-  dbUsername: envVars.dbUsername,
-  dbSynchronize: envVars.dbSynchronize,
-  dbSchema: envVars.dbSchema,
+  dbPassword: envVars.DB_PASSWORD,
+  dbDatabase: envVars.DB_DATABASE,
+  dbHost: envVars.DB_HOST,
+  dbPort: envVars.DB_PORT,
+  dbUsername: envVars.DB_USERNAME,
+  dbSynchronize: envVars.DB_SYNCHRONIZE,
+  dbSchema: envVars.DB_SCHEMA,
 };
