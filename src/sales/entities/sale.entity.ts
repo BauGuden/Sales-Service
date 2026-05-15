@@ -11,10 +11,13 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Parameter } from './parameter.entity';
 import { SaleProduct } from './sale-detail.entity';
 
 @Entity('sales')
@@ -48,6 +51,12 @@ export class Sale {
 
   @Column({ name: 'transaccion_id', length: 50, nullable: true })
   transactionId: string | null;
+
+  @ManyToOne(() => Parameter, (parameter) => parameter.sales, {
+    nullable: false,
+  })
+  @JoinColumn({ name: 'parameter_id' })
+  parameter: Parameter;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

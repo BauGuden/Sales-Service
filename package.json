@@ -18,12 +18,13 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "seed:run": "node ./node_modules/typeorm-extension/bin/cli.cjs seed:run -d src/database/data-source.ts",
-    "seed:create": "node ./node_modules/typeorm-extension/bin/cli.cjs seed:create",
-    "migration:show": "ts-node -r tsconfig-paths/register src/database/scripts/migration-show.ts",
-    "migration:create": "ts-node -r tsconfig-paths/register src/database/scripts/migration-create.ts",
-    "migration:run": "ts-node -r tsconfig-paths/register src/database/scripts/migration-run.ts",
-    "migration:revert": "ts-node -r tsconfig-paths/register src/database/scripts/migration-revert.ts"
+    "seed:create": "ts-node -r tsconfig-paths/register src/database/scripts/seeds.ts create",
+    "seed:run": "ts-node -r tsconfig-paths/register src/database/scripts/seeds.ts run",
+    "seed:revert": "ts-node -r tsconfig-paths/register src/database/scripts/seeds.ts revert",
+    "migration:show": "ts-node -r tsconfig-paths/register src/database/scripts/migrations.ts show",
+    "migration:create": "ts-node -r tsconfig-paths/register src/database/scripts/migrations.ts create",
+    "migration:run": "ts-node -r tsconfig-paths/register src/database/scripts/migrations.ts run",
+    "migration:revert": "ts-node -r tsconfig-paths/register src/database/scripts/migrations.ts revert"
   },
   "dependencies": {
     "@nestjs/common": "11.1.13",
@@ -35,6 +36,7 @@
     "@nestjs/typeorm": "11.0.0",
     "class-transformer": "0.5.1",
     "class-validator": "0.14.3",
+    "dotenv": "^17.4.2",
     "joi": "18.0.2",
     "nats": "2.29.3",
     "pg": "8.18.0",

@@ -9,7 +9,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Sale } from './sale.entity';
-import { Parameter } from './parameter.entity';
 import { Product } from './product.entity';
 
 @Entity('sale_products')
@@ -20,12 +19,6 @@ export class SaleProduct {
   @ManyToOne(() => Sale, (sale) => sale.saleProducts, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'sale_id' })
   sale: Sale;
-
-  @ManyToOne(() => Parameter, (parameter) => parameter.saleProducts, {
-    nullable: false,
-  })
-  @JoinColumn({ name: 'parameter_id' })
-  parameter: Parameter;
 
   @ManyToOne(() => Product, (product) => product.saleProducts, {
     nullable: false,

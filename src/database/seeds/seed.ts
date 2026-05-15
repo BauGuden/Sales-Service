@@ -1,119 +1,90 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../../app.module';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 import { Group, Parameter, Product } from '../../sales/entities';
+import { GROUPS, PARAMETER, PRODUCTS } from './seed-data';
 
-const run = async () => {
-  // 1. Creamos el contexto de NestJS (sin levantar el servidor HTTP, solo lógica)
-  const app = await NestFactory.createApplicationContext(AppModule);
-  console.log('⏳ Conectando a la base de datos para sembrar datos...');
+export default class MainSeeder implements Seeder {
+  track = true;
 
-  // 2. Inyectamos los repositorios
-  const groupRepo = app.get(getRepositoryToken(Group));
-  const productRepo = app.get(getRepositoryToken(Product));
-  const paramRepo = app.get(getRepositoryToken(Parameter));
+  public async run(
+    dataSource: DataSource,
+    _factoryManager: SeederFactoryManager,
+  ): Promise<void> {
+    const groupMetadata = dataSource.getMetadata(Group);
+    const productMetadata = dataSource.getMetadata(Product);
+    const parameterMetadata = dataSource.getMetadata(Parameter);
+    const schema = groupMetadata.schema ?? 'sales';
 
-  try {
-    // --- SEEDING GROUPS ---
-    const existingGroups = await groupRepo.count();
-    if (existingGroups === 0) {
-      console.log('🌱 Sembrando Groups...');
-      const groups = [
-        groupRepo.create({ id: 1, name: 'SERVICIOS VARIOS', accountId: 1 }),
-        groupRepo.create({ id: 2, name: 'AUXILIO MORTUORIO', accountId: 2 }),
-        groupRepo.create({ id: 3, name: 'FONDO DE RETIRO Y CUOTA MORTUORIA', accountId: 4 }),
-        groupRepo.create({ id: 4, name: 'PRÉSTAMOS Y DIVIDENDOS', accountId: 3 }),
-        groupRepo.create({ id: 5, name: 'HOTEL PARÍS', accountId: 5 }),
-      ];
-      await groupRepo.save(groups);
-      console.log(`✅ Groups insertados: ${groups.length}`);
-    } else {
-      console.log('⏭️  Groups ya existen. Saltando...');
+    for (const group of GROUPS) {
+      await dataSource.query(
+        `INSERT INTO "${schema}"."${groupMetadata.tableName}" ("id", "name", "account_id")
+         VALUES ($1, $2, $3)
+         ON CONFLICT ("id")
+         DO UPDATE SET
+           "name" = EXCLUDED."name",
+           "account_id" = EXCLUDED."account_id"`,
+        [group.id, group.name, group.accountId],
+      );
     }
 
-    // --- SEEDING PRODUCTS ---
-    const existingProducts = await productRepo.count();
-    if (existingProducts === 0) {
-      console.log('🌱 Sembrando Products (Foders)...');
-      // Aseguramos que los grupos existan antes de insertar productos
-      const groupServicios = await groupRepo.findOne({ where: { id: 1 } });
-      const groupAuxilio = await groupRepo.findOne({ where: { id: 2 } });
-      const groupRetiro = await groupRepo.findOne({ where: { id: 3 } });
-
-      const products = [
-        productRepo.create({
-          name: 'Folder Complemento Económico',
-          code: 'F-CE',
-          price: 25,
-          isActive: true,
-          group: groupServicios,
-        }),
-        productRepo.create({
-          name: 'Folder Fondo de Retiro',
-          code: 'F-FR',
-          price: 25,
-          isActive: true,
-          group: groupRetiro,
-        }),
-        productRepo.create({
-          name: 'Folder Cuota Mortuoria',
-          code: 'F-CM',
-          price: 25,
-          isActive: true,
-          group: groupAuxilio,
-        }),
-        productRepo.create({
-          name: 'Folder Auxilio Mortuorio',
-          code: 'F-AM',
-          price: 25,
-          isActive: true,
-          group: groupAuxilio,
-        }),
-        productRepo.create({
-          name: 'Folder Préstamo Sector Activo',
-          code: 'F-PA',
-          price: 25,
-          isActive: true,
-          group: groupServicios, // O puede ir a grupo Préstamos si lo creas
-        }),
-        productRepo.create({
-          name: 'Folder Préstamo Sector Pasivo',
-          code: 'F-PP',
-          price: 15,
-          isActive: true,
-          group: groupServicios,
-        }),
-      ];
-      await productRepo.save(products);
-      console.log(`✅ Products insertados: ${products.length}`);
-    } else {
-      console.log('⏭️  Products ya existen. Saltando...');
+    for (const product of PRODUCTS) {
+      await dataSource.query(
+        `INSERT INTO "${schema}"."${productMetadata.tableName}" (
+          "name",
+          "code",
+          "price",
+          "is_active",
+          "group_id"
+        )
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT ("code")
+         DO UPDATE SET
+           "name" = EXCLUDED."name",
+           "price" = EXCLUDED."price",
+           "is_active" = EXCLUDED."is_active",
+           "group_id" = EXCLUDED."group_id"`,
+        [product.name, product.code, product.price, true, product.groupId],
+      );
     }
 
-    // --- SEEDING PARAMETERS ---
-    const existingParams = await paramRepo.count();
-    if (existingParams === 0) {
-      console.log('🌱 Sembrando Parameters...');
-      const params = paramRepo.create({
-        id: 1,
-        maxAmount: 0, // 0 = Sin límite
-        maxProducts: 1, // Límite actual requerido
-      });
-      await paramRepo.save(params);
-      console.log(`✅ Parameters insertados: 1`);
-    } else {
-      console.log('⏭️  Parameters ya existen. Saltando...');
-    }
+    await dataSource.query(
+      `INSERT INTO "${schema}"."${parameterMetadata.tableName}" (
+        "id",
+        "max_amount",
+        "max_products"
+      )
+       VALUES ($1, $2, $3)
+       ON CONFLICT ("id")
+       DO UPDATE SET
+         "max_amount" = EXCLUDED."max_amount",
+         "max_products" = EXCLUDED."max_products"`,
+      [PARAMETER.id, PARAMETER.maxAmount, PARAMETER.maxProducts],
+    );
 
-    console.log('🎉 Base de datos sembrada exitosamente!');
-  } catch (error) {
-    console.error('❌ Error durante el seeding:', error);
-  } finally {
-    // Cerramos la conexión
-    await app.close();
-    process.exit(0);
+    await this.syncSequence(dataSource, Group);
+    await this.syncSequence(dataSource, Product);
+    await this.syncSequence(dataSource, Parameter);
   }
-};
 
-// Ejecutamos el script
-void run();
+  private async syncSequence(
+    dataSource: DataSource,
+    entity: typeof Group | typeof Product | typeof Parameter,
+  ) {
+    const metadata = dataSource.getMetadata(entity);
+    const schema = metadata.schema;
+    const tableName = metadata.tableName;
+    const primaryColumn = metadata.primaryColumns[0]?.databaseName;
+
+    if (!schema || !primaryColumn) {
+      return;
+    }
+
+    await dataSource.query(
+      `SELECT setval(
+        pg_get_serial_sequence('"${schema}"."${tableName}"', '${primaryColumn}'),
+        COALESCE((SELECT MAX("${primaryColumn}") FROM "${schema}"."${tableName}"), 1),
+        true
+      )`,
+    );
+  }
+}

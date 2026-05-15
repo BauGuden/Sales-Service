@@ -61,23 +61,6 @@ export class CreateSalesSchemaAndCoreTables1763052000000
               type: 'int',
               isNullable: false,
             },
-            {
-              name: 'created_at',
-              type: 'timestamp',
-              default: 'now()',
-              isNullable: false,
-            },
-            {
-              name: 'updated_at',
-              type: 'timestamp',
-              default: 'now()',
-              isNullable: false,
-            },
-            {
-              name: 'deleted_at',
-              type: 'timestamp',
-              isNullable: true,
-            },
           ],
         }),
       );
@@ -109,23 +92,6 @@ export class CreateSalesSchemaAndCoreTables1763052000000
               type: 'int',
               default: '1',
               isNullable: false,
-            },
-            {
-              name: 'created_at',
-              type: 'timestamp',
-              default: 'now()',
-              isNullable: false,
-            },
-            {
-              name: 'updated_at',
-              type: 'timestamp',
-              default: 'now()',
-              isNullable: false,
-            },
-            {
-              name: 'deleted_at',
-              type: 'timestamp',
-              isNullable: true,
             },
           ],
         }),
@@ -175,23 +141,6 @@ export class CreateSalesSchemaAndCoreTables1763052000000
               name: 'group_id',
               type: 'int',
               isNullable: false,
-            },
-            {
-              name: 'created_at',
-              type: 'timestamp',
-              default: 'now()',
-              isNullable: false,
-            },
-            {
-              name: 'updated_at',
-              type: 'timestamp',
-              default: 'now()',
-              isNullable: false,
-            },
-            {
-              name: 'deleted_at',
-              type: 'timestamp',
-              isNullable: true,
             },
           ],
         }),
@@ -278,23 +227,23 @@ export class CreateSalesSchemaAndCoreTables1763052000000
               isNullable: true,
             },
             {
-              name: 'created_at',
-              type: 'timestamp',
-              default: 'now()',
+              name: 'parameter_id',
+              type: 'int',
               isNullable: false,
-            },
-            {
-              name: 'updated_at',
-              type: 'timestamp',
-              default: 'now()',
-              isNullable: false,
-            },
-            {
-              name: 'deleted_at',
-              type: 'timestamp',
-              isNullable: true,
             },
           ],
+        }),
+      );
+
+      await queryRunner.createForeignKey(
+        `${this.schema}.sales`,
+        new TableForeignKey({
+          columnNames: ['parameter_id'],
+          referencedSchema: this.schema,
+          referencedTableName: 'parameters',
+          referencedColumnNames: ['id'],
+          onDelete: 'NO ACTION',
+          onUpdate: 'NO ACTION',
         }),
       );
     }
@@ -364,28 +313,6 @@ export class CreateSalesSchemaAndCoreTables1763052000000
               type: 'int',
               isNullable: false,
             },
-            {
-              name: 'parameter_id',
-              type: 'int',
-              isNullable: false,
-            },
-            {
-              name: 'created_at',
-              type: 'timestamp',
-              default: 'now()',
-              isNullable: false,
-            },
-            {
-              name: 'updated_at',
-              type: 'timestamp',
-              default: 'now()',
-              isNullable: false,
-            },
-            {
-              name: 'deleted_at',
-              type: 'timestamp',
-              isNullable: true,
-            },
           ],
         }),
       );
@@ -405,14 +332,6 @@ export class CreateSalesSchemaAndCoreTables1763052000000
           referencedTableName: 'sales',
           referencedColumnNames: ['id'],
           onDelete: 'CASCADE',
-          onUpdate: 'NO ACTION',
-        }),
-        new TableForeignKey({
-          columnNames: ['parameter_id'],
-          referencedSchema: this.schema,
-          referencedTableName: 'parameters',
-          referencedColumnNames: ['id'],
-          onDelete: 'NO ACTION',
           onUpdate: 'NO ACTION',
         }),
       ]);

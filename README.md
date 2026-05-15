@@ -23,21 +23,14 @@ cp .env.example .env
 # Instalar las dependencias
 pnpm install
 
+# Ejecutar migraciones
+pnpm migration:run
+
+# Correr el seeder principal
+pnpm seed:run
+
 # Correr proyecto en modo desarrollo
-pnpm run start:dev
-```
-
-## Generación de recursos
-
-```bash
-
-# Crear nuevo Modulo
-nest g res nombreModulo
-
-# Crear un seeder
-pnpm seed:create --name src/database/seeds/nombre_seed.ts
-# Correr seeder
-pnpm seed:run --name src/database/seeds/{code}-nombre_seed.ts
+pnpm start:dev
 ```
 
 ## Migraciones
@@ -58,14 +51,20 @@ pnpm migration:run
 pnpm migration:revert
 ```
 
-## Publicar cambios
+## Seeder
+
+El seeder principal vive en `src/database/seeds/seed.ts`.
 
 ```bash
+# Crear un nuevo archivo seeder
+pnpm seed:create nombre-del-seeder
 
-# Para enlazar a un nuevo repositorio
-git remote add origin https://github.com/tu-usuario/{nombre_nuevo-microservice}.git
-git add .
-git commit -m "Inicialización del nuevo proyecto"
-git branch -M main
-git push -u origin main
+# Ejecutar primero la estructura de base de datos
+pnpm migration:run
+
+# Cargar datos base en el schema sales
+pnpm seed:run
+
+# Revertir los datos base del seeder principal
+pnpm seed:revert
 ```

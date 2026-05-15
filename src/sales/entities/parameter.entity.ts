@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { SaleProduct } from './sale-detail.entity';
+import { Sale } from './sale.entity';
 
 @Entity('parameters')
 export class Parameter {
@@ -29,6 +29,6 @@ export class Parameter {
   @DeleteDateColumn({ name: 'deleted_at', type: 'timestamp', nullable: true })
   deletedAt: Date | null;
 
-  @OneToMany(() => SaleProduct, (saleProduct) => saleProduct.parameter)
-  saleProducts: SaleProduct[];
+  @OneToMany(() => Sale, (sale) => sale.parameter)
+  sales: Sale[];
 }

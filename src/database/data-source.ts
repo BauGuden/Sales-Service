@@ -2,6 +2,7 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import { SeederOptions } from 'typeorm-extension';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { dbEnvs } from 'src/config';
+import MainSeeder from './seeds/seed';
 
 const isTsRuntime = __filename.endsWith('.ts');
 
@@ -16,7 +17,7 @@ export const options: DataSourceOptions & SeederOptions = {
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   namingStrategy: new SnakeNamingStrategy(),
 
-  seeds: ['src/database/seeds/**/*{.ts,.js}'],
+  seeds: [MainSeeder],
   seedTracking: true,
 
   schema: dbEnvs.dbSchema,
