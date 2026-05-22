@@ -61,6 +61,13 @@ export class CreateSalesSchemaAndCoreTables1763052000000
               type: 'int',
               isNullable: false,
             },
+            {
+              name: 'shortened',
+              type: 'varchar',
+              length: '10',
+              isNullable: false,
+              isUnique: true,
+            },
           ],
         }),
       );
