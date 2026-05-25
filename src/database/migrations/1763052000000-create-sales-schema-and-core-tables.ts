@@ -4,13 +4,14 @@ import {
   Table,
   TableForeignKey,
 } from 'typeorm';
+import { dbEnvs } from 'src/config';
 
 export class CreateSalesSchemaAndCoreTables1763052000000
   implements MigrationInterface
 {
   name = 'CreateSalesSchemaAndCoreTables1763052000000';
 
-  private readonly schema = 'sales';
+  private readonly schema = dbEnvs.dbSchema;
   private readonly saleStateEnumName = 'sale_state_enum';
   private readonly saleStateEnumPath = `"${this.schema}"."${this.saleStateEnumName}"`;
 

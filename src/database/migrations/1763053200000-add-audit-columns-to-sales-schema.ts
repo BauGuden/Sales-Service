@@ -1,11 +1,12 @@
 import { MigrationInterface, QueryRunner, TableColumn } from 'typeorm';
+import { dbEnvs } from 'src/config';
 
 export class AddAuditColumnsToSalesSchema1763053200000
   implements MigrationInterface
 {
   name = 'AddAuditColumnsToSalesSchema1763053200000';
 
-  private readonly schema = 'sales';
+  private readonly schema = dbEnvs.dbSchema;
   private readonly tables = [
     'groups',
     'parameters',

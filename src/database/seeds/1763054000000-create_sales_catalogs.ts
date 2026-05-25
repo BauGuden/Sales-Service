@@ -1,15 +1,49 @@
 import { DataSource } from 'typeorm';
-import { Seeder, SeederFactoryManager } from 'typeorm-extension';
+import { Seeder } from 'typeorm-extension';
 import { Group, Parameter, Product } from '../../sales/entities';
-import { GROUPS, PARAMETER, PRODUCTS } from './seed-data';
 
-export default class MainSeeder implements Seeder {
+const GROUPS = [
+  { id: 1, name: 'gastos administrativos', shortened: 'GA', accountId: 1 },
+  { id: 2, name: 'folders', shortened: 'FO', accountId: 1 },
+] as const;
+
+const PRODUCTS = [
+  {
+    id: 1,
+    name: 'Folder Complemento Económico',
+    code: 'F-CE',
+    price: 25,
+    groupId: 2,
+  },
+  { id: 2, name: 'Folder Fondo de Retiro', code: 'F-FR', price: 25, groupId: 2 },
+  { id: 3, name: 'Folder Cuota Mortuoria', code: 'F-CM', price: 25, groupId: 2 },
+  { id: 4, name: 'Folder Auxilio Mortuorio', code: 'F-AM', price: 25, groupId: 2 },
+  {
+    id: 5,
+    name: 'Folder Préstamos Sector Activo',
+    code: 'F-PA',
+    price: 25,
+    groupId: 1,
+  },
+  {
+    id: 6,
+    name: 'Folder Préstamos Sector Pasivo',
+    code: 'F-PP',
+    price: 15,
+    groupId: 1,
+  },
+] as const;
+
+const PARAMETER = {
+  id: 1,
+  maxAmount: 1,
+  maxProducts: 1,
+} as const;
+
+export class CreateSalesCatalogs1763054000000 implements Seeder {
   track = true;
 
-  public async run(
-    dataSource: DataSource,
-    _factoryManager: SeederFactoryManager,
-  ): Promise<void> {
+  public async run(dataSource: DataSource): Promise<void> {
     const groupMetadata = dataSource.getMetadata(Group);
     const productMetadata = dataSource.getMetadata(Product);
     const parameterMetadata = dataSource.getMetadata(Parameter);
@@ -17,35 +51,51 @@ export default class MainSeeder implements Seeder {
 
     for (const group of GROUPS) {
       await dataSource.query(
-        `INSERT INTO "${schema}"."${groupMetadata.tableName}" ("id", "name", "account_id")
-         VALUES ($1, $2, $3)
+        `INSERT INTO "${schema}"."${groupMetadata.tableName}" ("id", "name", "shortened", "account_id")
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT ("id")
          DO UPDATE SET
            "name" = EXCLUDED."name",
+           "shortened" = EXCLUDED."shortened",
            "account_id" = EXCLUDED."account_id"`,
-        [group.id, group.name, group.accountId],
+        [group.id, group.name, group.shortened, group.accountId],
       );
     }
 
     for (const product of PRODUCTS) {
       await dataSource.query(
         `INSERT INTO "${schema}"."${productMetadata.tableName}" (
+          "id",
           "name",
           "code",
           "price",
           "is_active",
           "group_id"
         )
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT ("code")
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT ("id")
          DO UPDATE SET
            "name" = EXCLUDED."name",
+           "code" = EXCLUDED."code",
            "price" = EXCLUDED."price",
            "is_active" = EXCLUDED."is_active",
            "group_id" = EXCLUDED."group_id"`,
-        [product.name, product.code, product.price, true, product.groupId],
+        [
+          product.id,
+          product.name,
+          product.code,
+          product.price,
+          true,
+          product.groupId,
+        ],
       );
     }
+
+    await dataSource.query(
+      `DELETE FROM "${schema}"."${groupMetadata.tableName}"
+       WHERE "id" = ANY($1)`,
+      [[3, 4, 5]],
+    );
 
     await dataSource.query(
       `INSERT INTO "${schema}"."${parameterMetadata.tableName}" (
