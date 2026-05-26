@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import * as joi from 'joi';
 
 interface EnvVars {
@@ -21,7 +20,7 @@ const envsSchema = joi
     DB_PORT: joi.number().port().required(),
     DB_USERNAME: joi.string().required(),
     DB_SYNCHRONIZE: joi.string().valid('true', 'false').default('false'),
-    DB_SCHEMA: joi.string().default('public'),
+    DB_SCHEMA: joi.string().default('sales'),
   })
   .unknown(true);
 

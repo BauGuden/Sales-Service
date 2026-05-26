@@ -17,6 +17,9 @@ export class Group {
   @Column({ length: 100 })
   name: string; // 'FOLDERS', 'GASTOS ADMINISTRATIVOS'
 
+  @Column({ length: 10, unique: true })
+  shortened: string;
+  
   @Column({ name: 'account_id', type: 'int' })
   accountId: number; // Referencia a contabilidad (Global Service)
 

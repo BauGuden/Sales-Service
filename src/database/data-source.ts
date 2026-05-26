@@ -3,7 +3,23 @@ import { SeederOptions } from 'typeorm-extension';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { dbEnvs } from 'src/config';
 
-const isTsRuntime = __filename.endsWith('.ts');
+const databaseSchema = dbEnvs.dbSchema;
+
+const quoteIdentifier = (identifier: string) =>
+  `"${identifier.replace(/"/g, '""')}"`;
+
+async function ensureDatabaseSchema(dataSource: DataSource) {
+  const queryRunner = dataSource.createQueryRunner();
+
+  await queryRunner.connect();
+  try {
+    await queryRunner.query(
+      `CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(databaseSchema)}`,
+    );
+  } finally {
+    await queryRunner.release();
+  }
+}
 
 export const options: DataSourceOptions & SeederOptions = {
   type: 'postgres' as const,
@@ -16,14 +32,26 @@ export const options: DataSourceOptions & SeederOptions = {
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   namingStrategy: new SnakeNamingStrategy(),
 
-  seeds: ['src/database/seeds/**/*{.ts,.js}'],
+  seeds: [__dirname + '/seeds/**/*{.ts,.js}'],
   seedTracking: true,
 
-  schema: dbEnvs.dbSchema,
+  schema: databaseSchema,
   migrationsTableName: 'migrations',
-  migrations: isTsRuntime
-    ? ['src/database/migrations/**/*.ts']
-    : ['dist/database/migrations/**/*.js'],
+  migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
 };
 
-export default new DataSource(options);
+export class SchemaAwareDataSource extends DataSource {
+  override async initialize(): Promise<this> {
+    await super.initialize();
+
+    try {
+      await ensureDatabaseSchema(this);
+      return this;
+    } catch (error) {
+      await this.destroy();
+      throw error;
+    }
+  }
+}
+
+export default new SchemaAwareDataSource(options);
