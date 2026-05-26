@@ -14,13 +14,13 @@ export class SalesController {
     return this.salesService.searchPerson(value, type);
   }
 
-  @MessagePattern('sales.getGroups')
+  @MessagePattern('sales.groups')
   async getGroups() {
     return this.salesService.getGroups();
   }
   
-  @MessagePattern('sales.getProductsbyGroup')
-  async getProductsbyGroup(@Payload('groupId') groupId: number) {
+  @MessagePattern('sales.groupProducts')
+  async getProductsbyGroup(@Payload('id') groupId: number) {
     return this.salesService.getProductsbyGroup(groupId);
   }
 
