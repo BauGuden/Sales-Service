@@ -24,4 +24,9 @@ export class SalesController {
     return this.salesService.getProductsbyGroup(groupId);
   }
 
+  @MessagePattern('sales.paymentLocations')
+  async getPaymentLocations() {
+    return this.salesService.getPaymentLocations();
+  }
+
 }
