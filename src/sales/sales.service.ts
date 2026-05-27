@@ -19,7 +19,7 @@ export class SalesService {
   async searchPerson(value: string, type: string) {
     try {
       const { serviceStatus, error, message, data } = await this.nats.firstValue(
-        'person.searchSales',
+        'person.search',
         { value, type },
       );
 
@@ -36,8 +36,8 @@ export class SalesService {
         message,
         data: data ?? null,
       };
-    } catch (ex) {
-      this.logger.error(`Error en searchPerson: ${ex.message}`, ex.stack);
+    } catch (error) {
+      this.logger.error(`Error en searchPerson: ${error.message}`, error.stack);
       return {
         error: true,
         message: 'Error al comunicarse con el servicio de búsqueda de personas',
@@ -60,8 +60,8 @@ export class SalesService {
         message: 'Grupos obtenidos correctamente',
         data: groups,
       };
-    } catch (ex) {
-      this.logger.error(`Error al obtener grupos: ${ex.message}`, ex.stack);
+    } catch (error) {
+      this.logger.error(`Error al obtener grupos: ${error.message}`, error.stack);
       return {
         error: true,
         message:
@@ -103,12 +103,46 @@ export class SalesService {
         message: 'Productos obtenidos correctamente',
         data: products,
       };
-    } catch (ex) {
-      this.logger.error(`Error al obtener productos por grupo ${groupId}: ${ex.message}`, ex.stack);
+    } catch (error) {
+      this.logger.error(`Error al obtener productos por grupo ${groupId}: ${error.message}`, error.stack);
       return {
         error: true,
         message:
           'No se pudieron obtener los productos por grupo. Verifique la conexión o la existencia de la tabla.',
+        data: null,
+      };
+    }
+  }
+
+  async getPaymentLocations(): Promise<{
+    error: boolean;
+    message: string;
+    data: any[] | null;
+  }> {
+    try {
+      const { serviceStatus, error, message, data } = await this.nats.firstValue(
+        'global.getPaymentLocations',
+        {},
+      );
+
+      if (!serviceStatus) {
+        return {
+          error: true,
+          message: 'Servicio de ubicaciones de pago no disponible',
+          data: null,
+        };
+      }
+
+      return {
+        error,
+        message,
+        data: data ?? null,
+      };
+    } catch (error) {
+      this.logger.error(`Error en getPaymentLocations: ${error.message}`, error.stack);
+      return {
+        error: true,
+        message: 'Error al comunicarse con el servicio de ubicaciones de pago',
         data: null,
       };
     }
