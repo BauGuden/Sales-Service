@@ -18,6 +18,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Parameter } from './parameter.entity';
+import { PaymentType } from './payment-type.entity';
 import { SaleProduct } from './sale-detail.entity';
 
 @Entity('sales')
@@ -46,8 +47,11 @@ export class Sale {
   @Column({ name: 'payment_location_id', type: 'int' })
   paymentLocationId: number;
 
-  @Column({ name: 'payment_type_id', type: 'int' })
-  paymentTypeId: number;
+  @ManyToOne(() => PaymentType, (paymentType) => paymentType.sales, {
+    nullable: false,
+  })
+  @JoinColumn({ name: 'payment_type_id' })
+  paymentType: PaymentType;
 
   @Column({ name: 'transaccion_id', length: 50, nullable: true })
   transactionId: string | null;
