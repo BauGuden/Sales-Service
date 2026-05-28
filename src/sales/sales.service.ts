@@ -59,7 +59,7 @@ export class SalesService {
   }> {
     try {
       const groups = await this.groupsRepository.find({
-        select: ['id', 'name', 'shortened'],
+        select: ['id', 'name', 'shortened', 'accountId'],
       });
 
       if (!groups || groups.length === 0) {
@@ -114,8 +114,9 @@ export class SalesService {
       // Combinar los datos de las cuentas con los grupos usando un mapa para que sea O(n)
       const enrichedGroups = groups.map((group) => {
         const account = accountMap.get(group.accountId);
+        const { accountId, ...groupWithoutAccountId } = group;
         return {
-          ...group,
+          ...groupWithoutAccountId,
           accountName: account ? account.name : null,
           accountShortened: account ? account.shortened : null,
         };
