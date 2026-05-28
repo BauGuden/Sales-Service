@@ -21,12 +21,17 @@ export class SalesController {
   
   @MessagePattern('sales.groupProducts')
   async getProductsbyGroup(@Payload('id') groupId: number) {
-    return this.salesService.getProductsbyGroup(groupId);
+    return this.salesService.getProductsByGroup(groupId);
   }
 
   @MessagePattern('sales.paymentLocations')
   async getPaymentLocations() {
     return this.salesService.getPaymentLocations();
+  }
+
+  @MessagePattern('sales.paymentTypes')
+  async getPaymentTypes() {
+    return this.salesService.getPaymentTypes();
   }
 
 }

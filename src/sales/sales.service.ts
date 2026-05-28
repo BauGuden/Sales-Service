@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
 import { Repository } from 'typeorm';
-import { Group, Product } from './entities';
+import { Group, PaymentType, Product } from './entities';
 
 @Injectable()
 export class SalesService {
@@ -14,9 +14,15 @@ export class SalesService {
     private readonly groupsRepository: Repository<Group>,
     @InjectRepository(Product)
     private readonly productsRepository: Repository<Product>,
+    @InjectRepository(PaymentType)
+    private readonly paymentTypesRepository: Repository<PaymentType>,
   ) {}
 
-  async searchPerson(value: string, type: string) {
+  async searchPerson(value: string, type: string): Promise<{
+    error: boolean;
+    message: string;
+    data: any | null;
+  }> {
     try {
       const { serviceStatus, error, message, data } = await this.nats.firstValue(
         'person.search',
@@ -71,7 +77,7 @@ export class SalesService {
     }
   }
 
-  async getProductsbyGroup(groupId: number): Promise<{
+  async getProductsByGroup(groupId: number): Promise<{
     error: boolean;
     message: string;
     data: Pick<Product, 'id' | 'name' | 'code' | 'price'>[] | null;
@@ -147,4 +153,32 @@ export class SalesService {
       };
     }
   }
+
+  async getPaymentTypes(): Promise<{
+    error: boolean;
+    message: string;
+    data: Pick<PaymentType, 'id' | 'name' | 'description' | 'shortened'>[] | null;
+  }> {
+
+    try {
+      const paymentTypes = await this.paymentTypesRepository.find({
+        select: ['id', 'name', 'description', 'shortened'],
+      });
+      return {
+        error: false,
+        message: 'Tipos de pago obtenidos correctamente',
+        data: paymentTypes,
+      };
+    } catch (error) {
+      this.logger.error(`Error al obtener tipos de pago: ${error.message}`, error.stack);
+      return {
+        error: true,
+        message:
+          'No se pudieron obtener los tipos de pago. Verifique la conexión o la existencia de la tabla.',
+        data: null,
+      };
+    }
+
+  }
+
 }

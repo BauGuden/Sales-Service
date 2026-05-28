@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { Sale } from './sale.entity';
 
-@Entity('payment_type')
+@Entity('payment_types')
 export class PaymentType {
   @PrimaryGeneratedColumn()
   id: number;

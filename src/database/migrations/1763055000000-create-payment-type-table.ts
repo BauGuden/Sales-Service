@@ -7,11 +7,11 @@ export class CreatePaymentTypeTable1763055000000 implements MigrationInterface {
   private readonly schema = dbEnvs.dbSchema;
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    if (!(await queryRunner.hasTable(`${this.schema}.payment_type`))) {
+    if (!(await queryRunner.hasTable(`${this.schema}.payment_types`))) {
       await queryRunner.createTable(
         new Table({
           schema: this.schema,
-          name: 'payment_type',
+          name: 'payment_types',
           columns: [
             {
               name: 'id',
@@ -62,7 +62,7 @@ export class CreatePaymentTypeTable1763055000000 implements MigrationInterface {
     }
 
     await queryRunner.query(
-      `INSERT INTO "${this.schema}"."payment_type" (
+      `INSERT INTO "${this.schema}"."payment_types" (
         "id",
         "name",
         "description",
@@ -82,8 +82,8 @@ export class CreatePaymentTypeTable1763055000000 implements MigrationInterface {
 
     await queryRunner.query(
       `SELECT setval(
-        pg_get_serial_sequence('"${this.schema}"."payment_type"', 'id'),
-        COALESCE((SELECT MAX("id") FROM "${this.schema}"."payment_type"), 1),
+        pg_get_serial_sequence('"${this.schema}"."payment_types"', 'id'),
+        COALESCE((SELECT MAX("id") FROM "${this.schema}"."payment_types"), 1),
         true
       )`,
     );
@@ -93,7 +93,7 @@ export class CreatePaymentTypeTable1763055000000 implements MigrationInterface {
       new TableForeignKey({
         columnNames: ['payment_type_id'],
         referencedSchema: this.schema,
-        referencedTableName: 'payment_type',
+        referencedTableName: 'payment_types',
         referencedColumnNames: ['id'],
         onDelete: 'NO ACTION',
         onUpdate: 'NO ACTION',
@@ -110,8 +110,8 @@ export class CreatePaymentTypeTable1763055000000 implements MigrationInterface {
       }
     }
 
-    if (await queryRunner.hasTable(`${this.schema}.payment_type`)) {
-      await queryRunner.dropTable(`${this.schema}.payment_type`, true, true, true);
+    if (await queryRunner.hasTable(`${this.schema}.payment_types`)) {
+      await queryRunner.dropTable(`${this.schema}.payment_types`, true, true, true);
     }
   }
 }
