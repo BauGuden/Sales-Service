@@ -59,7 +59,7 @@ export class SalesService {
   }> {
     try {
       const groups = await this.groupsRepository.find({
-        select: ['id', 'name', 'shortened', 'accountId'],
+        select: ['id', 'name', 'shortened'],
       });
 
       if (!groups || groups.length === 0) {
