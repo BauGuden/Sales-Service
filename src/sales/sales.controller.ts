@@ -19,19 +19,29 @@ export class SalesController {
     return this.salesService.getGroups();
   }
   
-  @MessagePattern('sales.groupProducts')
+  @MessagePattern('sales.getGroupProducts')
   async getProductsbyGroup(@Payload('id') groupId: number) {
     return this.salesService.getProductsByGroup(groupId);
   }
 
-  @MessagePattern('sales.paymentLocations')
+  @MessagePattern('sales.getPaymentLocations')
   async getPaymentLocations() {
     return this.salesService.getPaymentLocations();
   }
 
-  @MessagePattern('sales.paymentTypes')
+  @MessagePattern('sales.getPaymentTypes')
   async getPaymentTypes() {
     return this.salesService.getPaymentTypes();
+  }
+
+  @MessagePattern('sales.getAccounts')
+  async getAccounts() {
+    return this.salesService.getAccounts();
+  }
+
+  @MessagePattern('sales.getDataForSale')
+  async getDataForSale() {
+    return this.salesService.getDataForSale();
   }
 
 }

@@ -55,16 +55,76 @@ export class SalesService {
   async getGroups(): Promise<{
     error: boolean;
     message: string;
-    data: Pick<Group, 'id' | 'name' | 'shortened'>[] | null;
+    data: any[] | null;
   }> {
     try {
       const groups = await this.groupsRepository.find({
-        select: ['id', 'name', 'shortened'],
+        select: ['id', 'name', 'shortened', 'accountId'],
       });
+
+      if (!groups || groups.length === 0) {
+        return {
+          error: false,
+          message: 'Grupos obtenidos correctamente',
+          data: [],
+        };
+      }
+
+      // Extraer los accountId únicos de esos grupos, filtrando valores nulos o indefinidos
+      const accountIds = [
+        ...new Set(
+          groups
+            .map((g) => g.accountId)
+            .filter((id) => id !== null && id !== undefined),
+        ),
+      ];
+
+      const accountMap = new Map<number, { name: string; shortened: string }>();
+
+      if (accountIds.length > 0) {
+        try {
+          // Enviar esos IDs en un solo mensaje NATS al microservicio Global para que devuelva los datos de las cuentas
+          const response = await this.nats.firstValue('global.findAllAccountsByIds', {
+            ids: accountIds,
+            columns: ['id', 'name', 'shortened'],
+          });
+
+          if (response && response.serviceStatus && Array.isArray(response.data)) {
+            response.data.forEach((acc: any) => {
+              if (acc && acc.id !== undefined) {
+                accountMap.set(acc.id, {
+                  name: acc.name ?? null,
+                  shortened: acc.shortened ?? null,
+                });
+              }
+            });
+          } else {
+            this.logger.warn(
+              'No se pudo obtener información de las cuentas o el formato de respuesta no fue correcto.',
+            );
+          }
+        } catch (natsError) {
+          this.logger.error(
+            `Error al consultar cuentas vía NATS: ${natsError.message}`,
+            natsError.stack,
+          );
+        }
+      }
+
+      // Combinar los datos de las cuentas con los grupos usando un mapa para que sea O(n)
+      const enrichedGroups = groups.map((group) => {
+        const account = accountMap.get(group.accountId);
+        return {
+          ...group,
+          accountName: account ? account.name : null,
+          accountShortened: account ? account.shortened : null,
+        };
+      });
+
       return {
         error: false,
         message: 'Grupos obtenidos correctamente',
-        data: groups,
+        data: enrichedGroups,
       };
     } catch (error) {
       this.logger.error(`Error al obtener grupos: ${error.message}`, error.stack);
@@ -179,6 +239,88 @@ export class SalesService {
       };
     }
 
+  }
+
+  async getAccounts(): Promise<{
+    error: boolean;
+    message: string;
+    data: any[] | null;
+  }> {
+    try {
+      const { serviceStatus, error, message, data } = await this.nats.firstValue(
+        'global.getAccounts',
+        {},
+      );
+
+      if (!serviceStatus) {
+        return {
+          error: true,
+          message: 'Servicio de cuentas no disponible',
+          data: null,
+        };
+      }
+
+      return {
+        error,
+        message,
+        data: data ?? null,
+      };
+    } catch (error) {
+      this.logger.error(`Error en getAccounts: ${error.message}`, error.stack);
+      return {
+        error: true,
+        message: 'Error al comunicarse con el servicio de cuentas',
+        data: null,
+      };
+    }
+  }
+
+  async getDataForSale(): Promise<{
+    error: boolean;
+    message: string;
+    data: {
+      paymentTypes: Pick<PaymentType, 'id' | 'name' | 'description' | 'shortened'>[] | null;
+      paymentLocations: any[] | null;
+    } | null;
+  }> {
+    try {
+      const [paymentTypesResult, paymentLocationsResult] =
+        await Promise.all([
+          this.getPaymentTypes(),
+          this.getPaymentLocations(),
+        ]);
+
+      const error = paymentTypesResult.error || paymentLocationsResult.error;
+
+      if (error) {
+        const messages = [
+          paymentTypesResult.error ? paymentTypesResult.message : null,
+          paymentLocationsResult.error ? paymentLocationsResult.message : null,
+        ].filter(Boolean).join('; ');
+
+        return {
+          error: true,
+          message: `Error al obtener datos para la venta: ${messages}`,
+          data: null,
+        };
+      }
+
+      return {
+        error: false,
+        message: 'Datos para la venta obtenidos correctamente',
+        data: {
+          paymentTypes: paymentTypesResult.data,
+          paymentLocations: paymentLocationsResult.data,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error en getDataForSale: ${error.message}`, error.stack);
+      return {
+        error: true,
+        message: 'Error al obtener datos para la venta',
+        data: null,
+      };
+    }
   }
 
 }
