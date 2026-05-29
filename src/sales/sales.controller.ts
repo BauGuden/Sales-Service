@@ -19,8 +19,8 @@ export class SalesController {
     return this.salesService.getGroups();
   }
   
-  @MessagePattern('sales.getGroupProducts')
-  async getProductsbyGroup(@Payload('id') groupId: number) {
+  @MessagePattern('sales.getProductsByGroup')
+  async getProductsByGroup(@Payload('id') groupId: number) {
     return this.salesService.getProductsByGroup(groupId);
   }
 
