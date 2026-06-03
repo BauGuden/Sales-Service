@@ -42,6 +42,7 @@ const PARAMETER = {
   id: 1,
   maxAmount: 1,
   maxProducts: 1,
+  isActive: true,
 } as const;
 
 export class CreateSalesSchemaAndCoreTables1763052000000
@@ -154,6 +155,12 @@ export class CreateSalesSchemaAndCoreTables1763052000000
               name: 'max_products',
               type: 'int',
               default: '1',
+              isNullable: false,
+            },
+            {
+              name: 'is_active',
+              type: 'boolean',
+              default: true,
               isNullable: false,
             },
             {
@@ -538,13 +545,14 @@ export class CreateSalesSchemaAndCoreTables1763052000000
     );
 
     await queryRunner.query(
-      `INSERT INTO "${this.schema}"."parameters" ("id", "max_amount", "max_products")
-       VALUES ($1, $2, $3)
+      `INSERT INTO "${this.schema}"."parameters" ("id", "max_amount", "max_products", "is_active")
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT ("id")
        DO UPDATE SET
          "max_amount" = EXCLUDED."max_amount",
-         "max_products" = EXCLUDED."max_products"`,
-      [PARAMETER.id, PARAMETER.maxAmount, PARAMETER.maxProducts],
+         "max_products" = EXCLUDED."max_products",
+         "is_active" = EXCLUDED."is_active"`,
+      [PARAMETER.id, PARAMETER.maxAmount, PARAMETER.maxProducts, PARAMETER.isActive],
     );
 
     await this.syncSequence(queryRunner, 'groups');

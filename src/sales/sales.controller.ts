@@ -1,6 +1,7 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { SalesService } from './sales.service';
+import { UUID } from 'node:crypto';
 
 @Controller()
 export class SalesController {
@@ -16,32 +17,37 @@ export class SalesController {
 
   @MessagePattern('sales.groups')
   async getGroups() {
-    return this.salesService.getGroups();
+    return this.salesService.groups();
   }
   
-  @MessagePattern('sales.getProductsByGroup')
-  async getProductsByGroup(@Payload('id') groupId: number) {
-    return this.salesService.getProductsByGroup(groupId);
+  @MessagePattern('sales.productsGroup')
+  async productsGroup(@Payload('id') groupId: number) {
+    return this.salesService.productsGroup(groupId);
   }
 
-  @MessagePattern('sales.getPaymentLocations')
-  async getPaymentLocations() {
-    return this.salesService.getPaymentLocations();
+  @MessagePattern('sales.paymentLocations')
+  async paymentLocations() {
+    return this.salesService.paymentLocations();
   }
 
-  @MessagePattern('sales.getPaymentTypes')
-  async getPaymentTypes() {
-    return this.salesService.getPaymentTypes();
+  @MessagePattern('sales.paymentTypes')
+  async paymentTypes() {
+    return this.salesService.paymentTypes();
   }
 
-  @MessagePattern('sales.getAccounts')
-  async getAccounts() {
-    return this.salesService.getAccounts();
+  @MessagePattern('sales.accounts')
+  async accounts() {
+    return this.salesService.accounts();
   }
 
-  @MessagePattern('sales.getDataForSale')
-  async getDataForSale() {
-    return this.salesService.getDataForSale();
+  @MessagePattern('sales.dataForSale')
+  async dataForSale() {
+    return this.salesService.dataForSale();
+  }
+
+  @MessagePattern('sales.forCreatingSale')
+  async forCreatingSale(@Payload('uuid_column') personUuid: UUID) {
+    return this.salesService.forCreatingSale(personUuid);
   }
 
 }
