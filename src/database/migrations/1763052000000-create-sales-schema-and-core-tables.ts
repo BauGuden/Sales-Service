@@ -42,6 +42,7 @@ const PARAMETER = {
   id: 1,
   maxAmount: 1,
   maxProducts: 1,
+  currencySymbol: 'BS',
   isActive: true,
 } as const;
 
@@ -144,7 +145,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000
               generationStrategy: 'increment',
             },
             {
-              name: 'max_amount',
+              name: 'max_amount_products',
               type: 'decimal',
               precision: 10,
               scale: 2,
@@ -155,6 +156,12 @@ export class CreateSalesSchemaAndCoreTables1763052000000
               name: 'max_products',
               type: 'int',
               default: '1',
+              isNullable: false,
+            },
+            {
+              name: 'currency_symbol',
+              type: 'varchar',
+              length: '4',
               isNullable: false,
             },
             {
@@ -545,14 +552,15 @@ export class CreateSalesSchemaAndCoreTables1763052000000
     );
 
     await queryRunner.query(
-      `INSERT INTO "${this.schema}"."parameters" ("id", "max_amount", "max_products", "is_active")
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO "${this.schema}"."parameters" ("id", "max_amount_products", "max_products", "currency_symbol", "is_active")
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT ("id")
        DO UPDATE SET
-         "max_amount" = EXCLUDED."max_amount",
+         "max_amount_products" = EXCLUDED."max_amount_products",
          "max_products" = EXCLUDED."max_products",
+         "currency_symbol" = EXCLUDED."currency_symbol",
          "is_active" = EXCLUDED."is_active"`,
-      [PARAMETER.id, PARAMETER.maxAmount, PARAMETER.maxProducts, PARAMETER.isActive],
+      [PARAMETER.id, PARAMETER.maxAmount, PARAMETER.maxProducts, PARAMETER.currencySymbol, PARAMETER.isActive],
     );
 
     await this.syncSequence(queryRunner, 'groups');
