@@ -21,7 +21,7 @@ export class SalesController {
   }
   
   @MessagePattern('sales.productsGroup')
-  async productsGroup(@Payload('id') groupId: number) {
+  async productsGroup(@Payload('groupId') groupId: number) {
     return this.salesService.productsGroup(groupId);
   }
 
@@ -46,7 +46,7 @@ export class SalesController {
   }
 
   @MessagePattern('sales.forCreatingSale')
-  async forCreatingSale(@Payload('uuid_column') personUuid: UUID) {
+  async forCreatingSale(@Payload('personUuid') personUuid: UUID) {
     return this.salesService.forCreatingSale(personUuid);
   }
 

@@ -14,11 +14,14 @@ export class Parameter {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'max_amount', type: 'decimal', precision: 10, scale: 2, default: 0 })
-  maxAmount: number; // Límite monetario por venta
+  @Column({ name: 'max_amount_products', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  maxAmountProducts: number; // Límite monetario por venta
 
   @Column({ name: 'max_products', type: 'int', default: 1 })
   maxProducts: number; // Límite de items (carrito) por venta
+
+  @Column({ name: 'currency_symbol', type: 'varchar', length: 4 })
+  currencySymbol: string; // Moneda para las ventas, por ejemplo 'USD', 'EUR', etc.
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
