@@ -23,7 +23,7 @@ type GroupData = Pick<Group, 'id' | 'name' | 'shortened'> & {
 
 type ParameterData = Pick<
   Parameter,
-  'id' | 'maxAmountProducts' | 'maxProducts'  | 'currencySymbol' | 'isActive'
+  'id' | 'maxAmountProducts' | 'maxProducts' | 'currencySymbol' | 'isActive'
 >;
 
 type AccountLookupData = {
@@ -260,19 +260,42 @@ export class SalesService {
   async parameters(): Promise<{
     error: boolean;
     message: string;
-    data: ParameterData[] | null;
+    data: ParameterData | null;
   }> {
     try {
-      const parameters = await this.parameterRepository.find({
+      const activeParameters = await this.parameterRepository.find({
         where: { isActive: true },
-        select: ['id', 'maxAmountProducts', 'maxProducts', 'currencySymbol', 'isActive'],
+        select: [
+          'id',
+          'maxAmountProducts',
+          'maxProducts',
+          'currencySymbol',
+          'isActive',
+        ],
         order: { id: 'ASC' },
+        take: 2,
       });
+
+      if (activeParameters.length === 0) {
+        return {
+          error: true,
+          message: 'No existe un parámetro activo para crear la venta',
+          data: null,
+        };
+      }
+
+      if (activeParameters.length > 1) {
+        return {
+          error: true,
+          message: 'Hay más de un parámetro activo. Solo debe existir uno.',
+          data: null,
+        };
+      }
 
       return {
         error: false,
-        message: 'Parámetros obtenidos correctamente',
-        data: parameters,
+        message: 'Parámetro obtenido correctamente',
+        data: activeParameters[0],
       };
     } catch (error) {
       this.logger.error(
@@ -442,7 +465,7 @@ export class SalesService {
     data: {
       person: PersonForCreatingSaleData;
       groups: GroupData[];
-      parameters: ParameterData[];
+      parameters: ParameterData;
     } | null;
   }> {
     try {
@@ -521,7 +544,7 @@ export class SalesService {
             isPolice: features?.isPolice ?? false,
           },
           groups: groupsResult.data ?? [],
-          parameters: parametersResult.data ?? [],
+          parameters: parametersResult.data,
         },
       };
     } catch (error) {
