@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
 import { Repository } from 'typeorm';
-import { Group, PaymentType, Product } from './entities';
+import { Group, Parameter, PaymentType, Product } from './entities';
 
 type SearchPersonData = {
   uuidColum: string;
@@ -20,6 +20,11 @@ type GroupData = Pick<Group, 'id' | 'name' | 'shortened'> & {
   accountName: string | null;
   accountShortened: string | null;
 };
+
+type ParameterData = Pick<
+  Parameter,
+  'id' | 'maxAmountProducts' | 'maxProducts'  | 'currencySymbol' | 'isActive'
+>;
 
 type AccountLookupData = {
   id: number;
@@ -52,18 +57,21 @@ export class SalesService {
     private readonly productsRepository: Repository<Product>,
     @InjectRepository(PaymentType)
     private readonly paymentTypesRepository: Repository<PaymentType>,
+    @InjectRepository(Parameter)
+    private readonly parameterRepository: Repository<Parameter>,
   ) {}
 
-  async searchPerson(value: string, type: string): Promise<{
+  async searchPerson(
+    value: string,
+    type: string,
+  ): Promise<{
     error: boolean;
     message: string;
     data: SearchPersonData | null;
   }> {
     try {
-      const { serviceStatus, error, message, data } = await this.nats.firstValue(
-        'person.search',
-        { value, type },
-      );
+      const { serviceStatus, error, message, data } =
+        await this.nats.firstValue('person.search', { value, type });
 
       if (!serviceStatus) {
         return {
@@ -106,7 +114,6 @@ export class SalesService {
         };
       }
 
-      // Extraer los accountId únicos de esos grupos, filtrando valores nulos o indefinidos
       const accountIds = [
         ...new Set(
           groups
@@ -115,18 +122,29 @@ export class SalesService {
         ),
       ];
 
-      const accountMap = new Map<number, { name: string | null; shortened: string | null }>();
+      const accountMap = new Map<
+        number,
+        { name: string | null; shortened: string | null }
+      >();
 
       if (accountIds.length > 0) {
         try {
-          // Enviar esos IDs en un solo mensaje NATS al microservicio Global para que devuelva los datos de las cuentas
-          const response = await this.nats.firstValue('global.findAllAccountsByIds', {
-            ids: accountIds,
-            columns: ['id', 'name', 'shortened'],
-          });
+          const response = await this.nats.firstValue(
+            'global.findAllAccountsByIds',
+            {
+              ids: accountIds,
+              columns: ['id', 'name', 'shortened'],
+            },
+          );
 
-          if (response && response.serviceStatus && Array.isArray(response.data)) {
-            response.data.forEach((acc: AccountLookupData) => {
+          const accounts = Array.isArray(response)
+            ? response
+            : Array.isArray(response?.data)
+              ? response.data
+              : [];
+
+          if (accounts.length > 0 && response?.serviceStatus !== false) {
+            accounts.forEach((acc: AccountLookupData) => {
               if (acc && acc.id !== undefined) {
                 accountMap.set(acc.id, {
                   name: acc.name ?? null,
@@ -147,12 +165,13 @@ export class SalesService {
         }
       }
 
-      // Combinar los datos de las cuentas con los grupos usando un mapa para que sea O(n)
-      const enrichedGroups = groups.map((group) => {
+      const enrichedGroups: GroupData[] = groups.map((group) => {
         const account = accountMap.get(group.accountId);
-        const { accountId, ...groupWithoutAccountId } = group;
+
         return {
-          ...groupWithoutAccountId,
+          id: group.id,
+          name: group.name,
+          shortened: group.shortened,
           accountName: account ? account.name : null,
           accountShortened: account ? account.shortened : null,
         };
@@ -164,7 +183,10 @@ export class SalesService {
         data: enrichedGroups,
       };
     } catch (error) {
-      this.logger.error(`Error al obtener grupos: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error al obtener grupos: ${error.message}`,
+        error.stack,
+      );
       return {
         error: true,
         message:
@@ -222,11 +244,45 @@ export class SalesService {
         data: products,
       };
     } catch (error) {
-      this.logger.error(`Error al obtener productos por grupo ${groupId}: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error al obtener productos por grupo ${groupId}: ${error.message}`,
+        error.stack,
+      );
       return {
         error: true,
         message:
           'No se pudieron obtener los productos por grupo. Verifique la conexión o la existencia de la tabla.',
+        data: null,
+      };
+    }
+  }
+
+  async parameters(): Promise<{
+    error: boolean;
+    message: string;
+    data: ParameterData[] | null;
+  }> {
+    try {
+      const parameters = await this.parameterRepository.find({
+        where: { isActive: true },
+        select: ['id', 'maxAmountProducts', 'maxProducts', 'currencySymbol', 'isActive'],
+        order: { id: 'ASC' },
+      });
+
+      return {
+        error: false,
+        message: 'Parámetros obtenidos correctamente',
+        data: parameters,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error al obtener parámetros: ${error.message}`,
+        error.stack,
+      );
+      return {
+        error: true,
+        message:
+          'No se pudieron obtener los parámetros. Verifique la conexión o la existencia de la tabla.',
         data: null,
       };
     }
@@ -238,10 +294,8 @@ export class SalesService {
     data: PaymentLocationData[] | null;
   }> {
     try {
-      const { serviceStatus, error, message, data } = await this.nats.firstValue(
-        'global.paymentLocations',
-        {},
-      );
+      const { serviceStatus, error, message, data } =
+        await this.nats.firstValue('global.paymentLocations', {});
 
       if (!serviceStatus) {
         return {
@@ -257,7 +311,10 @@ export class SalesService {
         data: data ?? null,
       };
     } catch (error) {
-      this.logger.error(`Error en paymentLocations: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error en paymentLocations: ${error.message}`,
+        error.stack,
+      );
       return {
         error: true,
         message: 'Error al comunicarse con el servicio de ubicaciones de pago',
@@ -269,9 +326,10 @@ export class SalesService {
   async paymentTypes(): Promise<{
     error: boolean;
     message: string;
-    data: Pick<PaymentType, 'id' | 'name' | 'description' | 'shortened'>[] | null;
+    data:
+      | Pick<PaymentType, 'id' | 'name' | 'description' | 'shortened'>[]
+      | null;
   }> {
-
     try {
       const paymentTypes = await this.paymentTypesRepository.find({
         select: ['id', 'name', 'description', 'shortened'],
@@ -282,7 +340,10 @@ export class SalesService {
         data: paymentTypes,
       };
     } catch (error) {
-      this.logger.error(`Error al obtener tipos de pago: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error al obtener tipos de pago: ${error.message}`,
+        error.stack,
+      );
       return {
         error: true,
         message:
@@ -290,7 +351,6 @@ export class SalesService {
         data: null,
       };
     }
-
   }
 
   async accounts(): Promise<{
@@ -299,10 +359,8 @@ export class SalesService {
     data: AccountData[] | null;
   }> {
     try {
-      const { serviceStatus, error, message, data } = await this.nats.firstValue(
-        'global.accounts',
-        {},
-      );
+      const { serviceStatus, error, message, data } =
+        await this.nats.firstValue('global.accounts', {});
 
       if (!serviceStatus) {
         return {
@@ -331,16 +389,17 @@ export class SalesService {
     error: boolean;
     message: string;
     data: {
-      paymentTypes: Pick<PaymentType, 'id' | 'name' | 'description' | 'shortened'>[] | null;
+      paymentTypes:
+        | Pick<PaymentType, 'id' | 'name' | 'description' | 'shortened'>[]
+        | null;
       paymentLocations: PaymentLocationData[] | null;
     } | null;
   }> {
     try {
-      const [paymentTypesResult, paymentLocationsResult] =
-        await Promise.all([
-          this.paymentTypes(),
-          this.paymentLocations(),
-        ]);
+      const [paymentTypesResult, paymentLocationsResult] = await Promise.all([
+        this.paymentTypes(),
+        this.paymentLocations(),
+      ]);
 
       const error = paymentTypesResult.error || paymentLocationsResult.error;
 
@@ -348,7 +407,9 @@ export class SalesService {
         const messages = [
           paymentTypesResult.error ? paymentTypesResult.message : null,
           paymentLocationsResult.error ? paymentLocationsResult.message : null,
-        ].filter(Boolean).join('; ');
+        ]
+          .filter(Boolean)
+          .join('; ');
 
         return {
           error: true,
@@ -380,6 +441,8 @@ export class SalesService {
     message: string;
     data: {
       person: PersonForCreatingSaleData;
+      groups: GroupData[];
+      parameters: ParameterData[];
     } | null;
   }> {
     try {
@@ -391,20 +454,16 @@ export class SalesService {
         };
       }
 
-      const {
-        serviceStatus,
-        firstName,
-        secondName,
-        lastName,
-        mothersLastName,
-        identityCard,
-        nup,
-        features,
-      } = await this.nats.firstValue('person.findOneWithFeatures', {
-        uuid: personUuid,
-      });
+      const [personResponse, groupsResult, parametersResult] =
+        await Promise.all([
+          this.nats.firstValue('person.findOneWithFeatures', {
+            uuid: personUuid,
+          }),
+          this.groups(),
+          this.parameters(),
+        ]);
 
-      if (!serviceStatus) {
+      if (personResponse?.serviceStatus === false) {
         return {
           error: true,
           message: 'Servicio de Beneficiarios no disponible',
@@ -412,21 +471,64 @@ export class SalesService {
         };
       }
 
+      if (personResponse?.error) {
+        return {
+          error: true,
+          message:
+            personResponse.message ??
+            'No se pudieron obtener los datos de la persona',
+          data: null,
+        };
+      }
+
+      if (groupsResult.error || parametersResult.error) {
+        const messages = [
+          groupsResult.error ? groupsResult.message : null,
+          parametersResult.error ? parametersResult.message : null,
+        ]
+          .filter(Boolean)
+          .join('; ');
+
+        return {
+          error: true,
+          message: `Error al obtener datos para crear la venta: ${messages}`,
+          data: null,
+        };
+      }
+
+      const person = personResponse?.data ?? personResponse;
+      const {
+        firstName,
+        secondName,
+        lastName,
+        mothersLastName,
+        identityCard,
+        nup,
+        features,
+      } = person;
+
       return {
         error: false,
-        message: 'Datos de la persona obtenidos correctamente',
+        message: 'Datos para crear la venta obtenidos correctamente',
         data: {
           person: {
             uuidColumn: personUuid,
-            fullName: [firstName, secondName, lastName, mothersLastName].filter(Boolean).join(' '),
-            identityCard,
+            fullName: [firstName, secondName, lastName, mothersLastName]
+              .filter(Boolean)
+              .join(' '),
+            identityCard: identityCard ?? '',
             nup: nup ?? null,
             isPolice: features?.isPolice ?? false,
           },
+          groups: groupsResult.data ?? [],
+          parameters: parametersResult.data ?? [],
         },
       };
     } catch (error) {
-      this.logger.error(`Error en forCreatingSale: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error en forCreatingSale: ${error.message}`,
+        error.stack,
+      );
       return {
         error: true,
         message: 'Error al obtener los datos de la persona para crear la venta',
@@ -434,5 +536,4 @@ export class SalesService {
       };
     }
   }
-
 }
