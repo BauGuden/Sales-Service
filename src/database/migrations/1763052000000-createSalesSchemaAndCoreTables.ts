@@ -273,10 +273,8 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           },
           {
             name: 'max_amount_product',
-            type: 'decimal',
-            precision: 10,
-            scale: 2,
-            default: '0',
+            type: 'int',
+            default: '1',
             isNullable: false,
           },
           {
