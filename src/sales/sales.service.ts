@@ -3,47 +3,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
 import { Repository } from 'typeorm';
 import { Group, Parameter, PaymentType, Product } from './entities';
-
-type SearchPersonData = {
-  uuidColum: string;
-};
-
-type PersonForCreatingSaleData = {
-  uuidColumn: string;
-  fullName: string;
-  identityCard: string;
-  nup: number | null;
-  isPolice: boolean;
-};
-
-type GroupData = Pick<Group, 'id' | 'name' | 'shortened'> & {
-  accountName: string | null;
-  accountShortened: string | null;
-};
-
-type ParameterData = Pick<
-  Parameter,
-  'id' | 'maxAmountProducts' | 'maxProducts' | 'currencySymbol' | 'isActive'
->;
-
-type AccountLookupData = {
-  id: number;
-  name: string | null;
-  shortened: string | null;
-};
-
-type PaymentLocationData = {
-  id: number;
-  name: string;
-  code: string;
-};
-
-type AccountData = {
-  id: number;
-  eif: string;
-  name: string;
-  accountNumber: string;
-};
+import {
+  AccountDataDto,
+  AccountLookupDataDto,
+  GroupDataDto,
+  ParameterDataDto,
+  PaymentLocationDataDto,
+  PaymentTypeDataDto,
+  PersonForCreatingSaleDataDto,
+  ProductDataDto,
+  SearchPersonDataDto,
+} from './dto';
 
 @Injectable()
 export class SalesService {
@@ -67,7 +37,7 @@ export class SalesService {
   ): Promise<{
     error: boolean;
     message: string;
-    data: SearchPersonData | null;
+    data: SearchPersonDataDto | null;
   }> {
     try {
       const { serviceStatus, error, message, data } =
@@ -99,7 +69,7 @@ export class SalesService {
   async groups(): Promise<{
     error: boolean;
     message: string;
-    data: GroupData[] | null;
+    data: GroupDataDto[] | null;
   }> {
     try {
       const groups = await this.groupsRepository.find({
@@ -144,7 +114,7 @@ export class SalesService {
               : [];
 
           if (accounts.length > 0 && response?.serviceStatus !== false) {
-            accounts.forEach((acc: AccountLookupData) => {
+            accounts.forEach((acc: AccountLookupDataDto) => {
               if (acc && acc.id !== undefined) {
                 accountMap.set(acc.id, {
                   name: acc.name ?? null,
@@ -165,7 +135,7 @@ export class SalesService {
         }
       }
 
-      const enrichedGroups: GroupData[] = groups.map((group) => {
+      const enrichedGroups: GroupDataDto[] = groups.map((group) => {
         const account = accountMap.get(group.accountId);
 
         return {
@@ -199,7 +169,7 @@ export class SalesService {
   async productsGroup(groupId: number): Promise<{
     error: boolean;
     message: string;
-    data: Pick<Product, 'id' | 'name' | 'code' | 'price'>[] | null;
+    data: ProductDataDto[] | null;
   }> {
     try {
       const parsedGroupId = Number(groupId);
@@ -241,7 +211,12 @@ export class SalesService {
       return {
         error: false,
         message: 'Productos obtenidos correctamente',
-        data: products,
+        data: products.map((product) => ({
+          id: product.id,
+          name: product.name,
+          code: product.code,
+          price: String(product.price),
+        })),
       };
     } catch (error) {
       this.logger.error(
@@ -260,7 +235,7 @@ export class SalesService {
   async parameters(): Promise<{
     error: boolean;
     message: string;
-    data: ParameterData | null;
+    data: ParameterDataDto | null;
   }> {
     try {
       const activeParameters = await this.parameterRepository.find({
@@ -295,7 +270,13 @@ export class SalesService {
       return {
         error: false,
         message: 'Parámetro obtenido correctamente',
-        data: activeParameters[0],
+        data: {
+          id: activeParameters[0].id,
+          maxAmountProducts: String(activeParameters[0].maxAmountProducts),
+          maxProducts: activeParameters[0].maxProducts,
+          currencySymbol: activeParameters[0].currencySymbol,
+          isActive: activeParameters[0].isActive,
+        },
       };
     } catch (error) {
       this.logger.error(
@@ -314,7 +295,7 @@ export class SalesService {
   async paymentLocations(): Promise<{
     error: boolean;
     message: string;
-    data: PaymentLocationData[] | null;
+    data: PaymentLocationDataDto[] | null;
   }> {
     try {
       const { serviceStatus, error, message, data } =
@@ -349,9 +330,7 @@ export class SalesService {
   async paymentTypes(): Promise<{
     error: boolean;
     message: string;
-    data:
-      | Pick<PaymentType, 'id' | 'name' | 'description' | 'shortened'>[]
-      | null;
+    data: PaymentTypeDataDto[] | null;
   }> {
     try {
       const paymentTypes = await this.paymentTypesRepository.find({
@@ -379,7 +358,7 @@ export class SalesService {
   async accounts(): Promise<{
     error: boolean;
     message: string;
-    data: AccountData[] | null;
+    data: AccountDataDto[] | null;
   }> {
     try {
       const { serviceStatus, error, message, data } =
@@ -412,10 +391,8 @@ export class SalesService {
     error: boolean;
     message: string;
     data: {
-      paymentTypes:
-        | Pick<PaymentType, 'id' | 'name' | 'description' | 'shortened'>[]
-        | null;
-      paymentLocations: PaymentLocationData[] | null;
+      paymentTypes: PaymentTypeDataDto[] | null;
+      paymentLocations: PaymentLocationDataDto[] | null;
     } | null;
   }> {
     try {
@@ -463,9 +440,10 @@ export class SalesService {
     error: boolean;
     message: string;
     data: {
-      person: PersonForCreatingSaleData;
-      groups: GroupData[];
-      parameters: ParameterData;
+      person: PersonForCreatingSaleDataDto;
+      groups: GroupDataDto[];
+      parameters: ParameterDataDto;
+      paymentTypes: PaymentTypeDataDto[];
     } | null;
   }> {
     try {
@@ -477,14 +455,19 @@ export class SalesService {
         };
       }
 
-      const [personResponse, groupsResult, parametersResult] =
-        await Promise.all([
-          this.nats.firstValue('person.findOneWithFeatures', {
-            uuid: personUuid,
-          }),
-          this.groups(),
-          this.parameters(),
-        ]);
+      const [
+        personResponse,
+        groupsResult,
+        parametersResult,
+        paymentTypesResult,
+      ] = await Promise.all([
+        this.nats.firstValue('person.findOneWithFeatures', {
+          uuid: personUuid,
+        }),
+        this.groups(),
+        this.parameters(),
+        this.paymentTypes(),
+      ]);
 
       if (personResponse?.serviceStatus === false) {
         return {
@@ -504,10 +487,15 @@ export class SalesService {
         };
       }
 
-      if (groupsResult.error || parametersResult.error) {
+      if (
+        groupsResult.error ||
+        parametersResult.error ||
+        paymentTypesResult.error
+      ) {
         const messages = [
           groupsResult.error ? groupsResult.message : null,
           parametersResult.error ? parametersResult.message : null,
+          paymentTypesResult.error ? paymentTypesResult.message : null,
         ]
           .filter(Boolean)
           .join('; ');
@@ -545,6 +533,7 @@ export class SalesService {
           },
           groups: groupsResult.data ?? [],
           parameters: parametersResult.data,
+          paymentTypes: paymentTypesResult.data ?? [],
         },
       };
     } catch (error) {
