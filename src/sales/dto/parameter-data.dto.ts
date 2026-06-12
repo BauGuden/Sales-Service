@@ -13,7 +13,7 @@ export class ParameterDataDto {
   id: number;
 
   @IsNumberString()
-  maxAmountProducts: string;
+  maxAmountProduct: string;
 
   @IsInt()
   @IsPositive()

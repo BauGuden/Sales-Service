@@ -242,7 +242,7 @@ export class SalesService {
         where: { isActive: true },
         select: [
           'id',
-          'maxAmountProducts',
+          'maxAmountProduct',
           'maxProducts',
           'currencySymbol',
           'isActive',
@@ -272,7 +272,7 @@ export class SalesService {
         message: 'Parámetro obtenido correctamente',
         data: {
           id: activeParameters[0].id,
-          maxAmountProducts: String(activeParameters[0].maxAmountProducts),
+          maxAmountProduct: String(activeParameters[0].maxAmountProduct),
           maxProducts: activeParameters[0].maxProducts,
           currencySymbol: activeParameters[0].currencySymbol,
           isActive: activeParameters[0].isActive,
