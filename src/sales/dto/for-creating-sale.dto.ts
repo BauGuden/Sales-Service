@@ -1,6 +1,6 @@
 import { IsUUID } from 'class-validator';
 
-export class SearchPersonDataDto {
+export class ForCreatingSaleDto {
   @IsUUID()
-  uuidColum: string;
+  personUuid: string;
 }

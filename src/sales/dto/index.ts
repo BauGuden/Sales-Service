@@ -1,3 +1,4 @@
+export { ForCreatingSaleDto } from './for-creating-sale.dto';
 export { AccountDataDto } from './account-data.dto';
 export { AccountLookupDataDto } from './account-lookup-data.dto';
 export { GroupDataDto } from './group-data.dto';
@@ -6,4 +7,6 @@ export { PaymentLocationDataDto } from './payment-location-data.dto';
 export { PaymentTypeDataDto } from './payment-type-data.dto';
 export { PersonForCreatingSaleDataDto } from './person-for-creating-sale-data.dto';
 export { ProductDataDto } from './product-data.dto';
+export { ProductsGroupDto } from './products-group.dto';
 export { SearchPersonDataDto } from './search-person-data.dto';
+export { SearchPersonDto } from './search-person.dto';

@@ -3,7 +3,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
 import { Repository } from 'typeorm';
 import { Group, Parameter, PaymentType, Product } from './entities';
-import { AccountDataDto, AccountLookupDataDto, GroupDataDto, ParameterDataDto, PaymentLocationDataDto, PaymentTypeDataDto, PersonForCreatingSaleDataDto, ProductDataDto, SearchPersonDataDto } from './dto';
+import {
+  AccountDataDto,
+  AccountLookupDataDto,
+  GroupDataDto,
+  ParameterDataDto,
+  PaymentLocationDataDto,
+  PaymentTypeDataDto,
+  PersonForCreatingSaleDataDto,
+  ProductDataDto,
+  SearchPersonDataDto,
+} from './dto';
 
 @Injectable()
 export class SalesService {
@@ -201,7 +211,12 @@ export class SalesService {
       return {
         error: false,
         message: 'Productos obtenidos correctamente',
-        data: products,
+        data: products.map((product) => ({
+          id: product.id,
+          name: product.name,
+          code: product.code,
+          price: String(product.price),
+        })),
       };
     } catch (error) {
       this.logger.error(
@@ -255,7 +270,13 @@ export class SalesService {
       return {
         error: false,
         message: 'Parámetro obtenido correctamente',
-        data: activeParameters[0],
+        data: {
+          id: activeParameters[0].id,
+          maxAmountProducts: String(activeParameters[0].maxAmountProducts),
+          maxProducts: activeParameters[0].maxProducts,
+          currencySymbol: activeParameters[0].currencySymbol,
+          isActive: activeParameters[0].isActive,
+        },
       };
     } catch (error) {
       this.logger.error(
@@ -449,7 +470,7 @@ export class SalesService {
       ]);
 
       if (personResponse?.serviceStatus === false) {
-        return { 
+        return {
           error: true,
           message: 'Servicio de Beneficiarios no disponible',
           data: null,
