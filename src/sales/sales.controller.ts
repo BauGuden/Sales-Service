@@ -1,6 +1,5 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-import { ForCreatingSaleDto, ProductsGroupDto, SearchPersonDto } from './dto';
 import { SalesService } from './sales.service';
 
 @Controller()
@@ -8,11 +7,11 @@ export class SalesController {
   constructor(private readonly salesService: SalesService) {}
 
   @MessagePattern('sales.searchPerson')
-  async searchPerson(@Payload() searchPersonDto: SearchPersonDto) {
-    return this.salesService.searchPerson(
-      searchPersonDto.value,
-      searchPersonDto.type,
-    );
+  async searchPerson(
+    @Payload('value') value: string,
+    @Payload('type') type: string,
+  ) {
+    return this.salesService.searchPerson(value, type);
   }
 
   @MessagePattern('sales.groups')
@@ -21,8 +20,8 @@ export class SalesController {
   }
 
   @MessagePattern('sales.productsGroup')
-  async productsGroup(@Payload() productsGroupDto: ProductsGroupDto) {
-    return this.salesService.productsGroup(productsGroupDto.groupId);
+  async productsGroup(@Payload('groupId') groupId: number) {
+    return this.salesService.productsGroup(groupId);
   }
 
   @MessagePattern('sales.paymentLocations')
@@ -46,7 +45,7 @@ export class SalesController {
   }
 
   @MessagePattern('sales.forCreatingSale')
-  async forCreatingSale(@Payload() forCreatingSaleDto: ForCreatingSaleDto) {
-    return this.salesService.forCreatingSale(forCreatingSaleDto.personUuid);
+  async forCreatingSale(@Payload('personUuid') personUuid: string) {
+    return this.salesService.forCreatingSale(personUuid);
   }
 }
