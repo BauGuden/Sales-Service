@@ -1,7 +1,6 @@
 import {
   IsBoolean,
   IsInt,
-  IsNumberString,
   IsPositive,
   IsString,
   MaxLength,
@@ -12,8 +11,8 @@ export class ParameterDataDto {
   @IsPositive()
   id: number;
 
-  @IsNumberString()
-  maxAmountProduct: string;
+  @IsInt()
+  maxAmountProduct: number;
 
   @IsInt()
   @IsPositive()

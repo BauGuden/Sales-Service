@@ -272,7 +272,7 @@ export class SalesService {
         message: 'Parámetro obtenido correctamente',
         data: {
           id: activeParameters[0].id,
-          maxAmountProduct: String(activeParameters[0].maxAmountProduct),
+          maxAmountProduct: activeParameters[0].maxAmountProduct,
           maxProducts: activeParameters[0].maxProducts,
           currencySymbol: activeParameters[0].currencySymbol,
           isActive: activeParameters[0].isActive,
@@ -509,6 +509,7 @@ export class SalesService {
 
       const person = personResponse?.data ?? personResponse;
       const {
+        id,
         firstName,
         secondName,
         lastName,
@@ -523,6 +524,7 @@ export class SalesService {
         message: 'Datos para crear la venta obtenidos correctamente',
         data: {
           person: {
+            id: id,
             uuidColumn: personUuid,
             fullName: [firstName, secondName, lastName, mothersLastName]
               .filter(Boolean)
