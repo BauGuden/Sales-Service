@@ -7,7 +7,7 @@ import {
   UpdateDateColumn,
   Column,
 } from 'typeorm';
-import { Sale } from './sale.entity';
+import { Voucher } from './voucher.entity';
 
 @Entity('payment_types')
 export class PaymentType {
@@ -32,6 +32,6 @@ export class PaymentType {
   @DeleteDateColumn({ name: 'deleted_at', type: 'timestamp', nullable: true })
   deletedAt: Date | null;
 
-  @OneToMany(() => Sale, (sale) => sale.paymentType)
-  sales: Sale[];
+  @OneToMany(() => Voucher, (voucher) => voucher.paymentType)
+  vouchers: Voucher[];
 }
