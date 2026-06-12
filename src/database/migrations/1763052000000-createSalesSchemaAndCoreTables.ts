@@ -87,15 +87,19 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
   private readonly schema = dbEnvs.dbSchema;
   private readonly saleStateEnumName = 'sale_state_enum';
   private readonly saleStateEnumPath = `"${this.schema}"."${this.saleStateEnumName}"`;
+  private readonly paymentTypeStateEnumName = 'payment_type_state_enum';
+  private readonly paymentTypeStateEnumPath = `"${this.schema}"."${this.paymentTypeStateEnumName}"`;
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.createSchema(this.schema, true);
     await this.createSaleStateEnum(queryRunner);
+    await this.createPaymentTypeStateEnum(queryRunner);
     await this.createGroupsTable(queryRunner);
     await this.createParametersTable(queryRunner);
     await this.createProductsTable(queryRunner);
     await this.createPaymentTypesTable(queryRunner);
     await this.createSalesTable(queryRunner);
+    await this.createVouchersTable(queryRunner);
     await this.createSaleProductsTable(queryRunner);
     await this.seedCatalogs(queryRunner);
   }
@@ -108,6 +112,10 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
         true,
         true,
       );
+    }
+
+    if (await queryRunner.hasTable(`${this.schema}.vouchers`)) {
+      await queryRunner.dropTable(`${this.schema}.vouchers`, true, true, true);
     }
 
     if (await queryRunner.hasTable(`${this.schema}.sales`)) {
@@ -140,6 +148,9 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
       await queryRunner.dropTable(`${this.schema}.groups`, true, true, true);
     }
 
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS ${this.paymentTypeStateEnumPath}`,
+    );
     await queryRunner.query(`DROP TYPE IF EXISTS ${this.saleStateEnumPath}`);
   }
 
@@ -155,10 +166,31 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             AND n.nspname = '${this.schema}'
         ) THEN
           CREATE TYPE ${this.saleStateEnumPath} AS ENUM (
-            'GENERATED',
-            'PAID',
-            'CANCELLED',
-            'PAYMENT_ERROR'
+            'VIGENTE',
+            'ANULADO'
+          );
+        END IF;
+      END $$;`,
+    );
+  }
+
+  private async createPaymentTypeStateEnum(
+    queryRunner: QueryRunner,
+  ): Promise<void> {
+    await queryRunner.query(
+      `DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_type t
+          JOIN pg_namespace n ON n.oid = t.typnamespace
+          WHERE t.typname = '${this.paymentTypeStateEnumName}'
+            AND n.nspname = '${this.schema}'
+        ) THEN
+          CREATE TYPE ${this.paymentTypeStateEnumPath} AS ENUM (
+            'PAGADO',
+            'PENDIENTE',
+            'NO PAGADO'
           );
         END IF;
       END $$;`,
@@ -454,44 +486,20 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             isUnique: true,
           },
           {
-            name: 'customer',
-            type: 'varchar',
-            length: '150',
+            name: 'sale_state',
+            type: this.saleStateEnumPath,
+            default: `'VIGENTE'`,
             isNullable: false,
           },
           {
-            name: 'identity_card',
-            type: 'varchar',
-            length: '20',
+            name: 'person_id',
+            type: 'int',
             isNullable: false,
           },
           {
             name: 'date',
             type: 'timestamp',
             default: 'now()',
-            isNullable: false,
-          },
-          {
-            name: 'state',
-            type: this.saleStateEnumPath,
-            default: `'GENERATED'`,
-            isNullable: false,
-          },
-          {
-            name: 'payment_location_id',
-            type: 'int',
-            isNullable: false,
-          },
-          {
-            name: 'payment_type_id',
-            type: 'int',
-            isNullable: false,
-          },
-          {
-            name: 'total',
-            type: 'decimal',
-            precision: 10,
-            scale: 2,
             isNullable: false,
           },
           {
@@ -505,23 +513,6 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             type: 'int',
             isNullable: false,
           },
-          {
-            name: 'created_at',
-            type: 'timestamp',
-            default: 'now()',
-            isNullable: false,
-          },
-          {
-            name: 'updated_at',
-            type: 'timestamp',
-            default: 'now()',
-            isNullable: false,
-          },
-          {
-            name: 'deleted_at',
-            type: 'timestamp',
-            isNullable: true,
-          },
         ],
       }),
     );
@@ -533,6 +524,79 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
         referencedTableName: 'parameters',
         referencedColumnNames: ['id'],
         onDelete: 'NO ACTION',
+        onUpdate: 'NO ACTION',
+      }),
+    ]);
+  }
+
+  private async createVouchersTable(queryRunner: QueryRunner): Promise<void> {
+    if (await queryRunner.hasTable(`${this.schema}.vouchers`)) {
+      return;
+    }
+
+    await queryRunner.createTable(
+      new Table({
+        schema: this.schema,
+        name: 'vouchers',
+        columns: [
+          {
+            name: 'id',
+            type: 'int',
+            isPrimary: true,
+            isGenerated: true,
+            generationStrategy: 'increment',
+          },
+          {
+            name: 'sale_id',
+            type: 'int',
+            isNullable: false,
+          },
+          {
+            name: 'customer',
+            type: 'varchar',
+            length: '150',
+            isNullable: false,
+          },
+          {
+            name: 'identity_card_customer',
+            type: 'varchar',
+            length: '20',
+            isNullable: false,
+          },
+          {
+            name: 'payment_location_id',
+            type: 'int',
+            isNullable: false,
+          },
+          {
+            name: 'payment_type_id',
+            type: 'int',
+            isNullable: false,
+          },
+          {
+            name: 'payment_type_state',
+            type: this.paymentTypeStateEnumPath,
+            default: `'PENDIENTE'`,
+            isNullable: false,
+          },
+          {
+            name: 'total',
+            type: 'decimal',
+            precision: 10,
+            scale: 2,
+            isNullable: false,
+          },
+        ],
+      }),
+    );
+
+    await queryRunner.createForeignKeys(`${this.schema}.vouchers`, [
+      new TableForeignKey({
+        columnNames: ['sale_id'],
+        referencedSchema: this.schema,
+        referencedTableName: 'sales',
+        referencedColumnNames: ['id'],
+        onDelete: 'CASCADE',
         onUpdate: 'NO ACTION',
       }),
       new TableForeignKey({
