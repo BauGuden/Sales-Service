@@ -14,7 +14,7 @@ export class Parameter {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'max_amount_product', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ name: 'max_amount_product', type: 'int', default: 0 })
   maxAmountProduct: number; // Límite monetario por venta
 
   @Column({ name: 'max_products', type: 'int', default: 1 })
