@@ -1,5 +1,6 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
+import { CreateSaleDto } from './dto';
 import { SalesService } from './sales.service';
 
 @Controller()
@@ -48,4 +49,10 @@ export class SalesController {
   async forCreatingSale(@Payload('personUuid') personUuid: string) {
     return this.salesService.forCreatingSale(personUuid);
   }
+
+  @MessagePattern('sales.createSale')
+  async create(@Payload('data') data: CreateSaleDto) {
+    return this.salesService.createSale(data);
+  }
+  
 }

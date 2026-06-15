@@ -1,11 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
-import { Repository } from 'typeorm';
-import { Group, Parameter, PaymentType, Product } from './entities';
+import { DataSource, In, Repository } from 'typeorm';
+import {
+  Group,
+  Parameter,
+  PaymentType,
+  PaymentTypeState,
+  Product,
+  Sale,
+  SaleProduct,
+  SaleState,
+  Voucher,
+} from './entities';
 import {
   AccountDataDto,
   AccountLookupDataDto,
+  CreateSaleDto,
   GroupDataDto,
   ParameterDataDto,
   PaymentLocationDataDto,
@@ -29,6 +40,7 @@ export class SalesService {
     private readonly paymentTypesRepository: Repository<PaymentType>,
     @InjectRepository(Parameter)
     private readonly parameterRepository: Repository<Parameter>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async searchPerson(
@@ -546,6 +558,376 @@ export class SalesService {
       return {
         error: true,
         message: 'Error al obtener los datos de la persona para crear la venta',
+        data: null,
+      };
+    }
+  }
+
+  async createSale(data: CreateSaleDto): Promise<{
+    error: boolean;
+    message: string;
+    data: {
+      datosIngreso: {
+        personId: number;
+        paymentTypeId: number;
+        parameterId: number;
+        salesProducts: {
+          id: number;
+          name: string;
+          code: string;
+          price: string;
+          amount: number;
+        }[];
+      };
+      sales: {
+        id: number;
+        code: string | null;
+        saleState: SaleState;
+        personId: number;
+        transactionId: string | null;
+        parameterId: number;
+      };
+      voucher: {
+        id: number;
+        saleId: number;
+        customer: string | null;
+        identityCardCustomer: string | null;
+        paymentLocationId: number | null;
+        paymentTypeId: number;
+        paymentTypeState: PaymentTypeState;
+        total: number;
+      };
+      saleProducts: {
+        id: number;
+        productId: number;
+        name: string;
+        price: number;
+        amount: number;
+        total: number;
+      }[];
+    } | null;
+  }> {
+    try {
+      const personId = Number(data?.personId);
+      const paymentTypeId = Number(data?.paymentTypeId);
+      const parameterId = Number(data?.parameterId);
+
+      const invalidId = [
+        ['personId', personId],
+        ['paymentTypeId', paymentTypeId],
+        ['parameterId', parameterId],
+      ].find(([, value]) => !Number.isInteger(value) || Number(value) <= 0);
+
+      if (invalidId) {
+        return {
+          error: true,
+          message: `${invalidId[0]} debe ser un número entero mayor a cero`,
+          data: null,
+        };
+      }
+
+      if (!Array.isArray(data?.salesProducts) || !data.salesProducts.length) {
+        return {
+          error: true,
+          message: 'Debe enviar al menos un producto para crear la venta',
+          data: null,
+        };
+      }
+
+      const normalizedProducts: {
+        productId: number;
+        name: string;
+        code: string;
+        price: number;
+        amount: number;
+        total: number;
+      }[] = [];
+
+      for (const [index, item] of data.salesProducts.entries()) {
+        const productId = Number(item?.id);
+        const amount = Number(item?.amount);
+        const price = Number(item?.price);
+        const total = Number((price * amount).toFixed(2));
+
+        if (!Number.isInteger(productId) || productId <= 0) {
+          return {
+            error: true,
+            message: `salesProducts[${index}].id debe ser un número entero mayor a cero`,
+            data: null,
+          };
+        }
+
+        if (!item?.name || typeof item.name !== 'string') {
+          return {
+            error: true,
+            message: `salesProducts[${index}].name es requerido`,
+            data: null,
+          };
+        }
+
+        if (!item?.code || typeof item.code !== 'string') {
+          return {
+            error: true,
+            message: `salesProducts[${index}].code es requerido`,
+            data: null,
+          };
+        }
+
+        if (!Number.isInteger(amount) || amount <= 0) {
+          return {
+            error: true,
+            message: `salesProducts[${index}].amount debe ser un número entero mayor a cero`,
+            data: null,
+          };
+        }
+
+        if (!Number.isFinite(price) || price <= 0) {
+          return {
+            error: true,
+            message: `salesProducts[${index}].price debe ser un monto válido mayor a cero con hasta dos decimales`,
+            data: null,
+          };
+        }
+
+        normalizedProducts.push({
+          productId,
+          name: item.name.trim(),
+          code: item.code.trim(),
+          price,
+          amount,
+          total,
+        });
+      }
+
+      const productIds = normalizedProducts.map((item) => item.productId);
+
+      if (new Set(productIds).size !== productIds.length) {
+        return {
+          error: true,
+          message: 'No se puede enviar el mismo producto más de una vez',
+          data: null,
+        };
+      }
+
+      const [parameter, paymentType, products, personResponse] =
+        await Promise.all([
+          this.parameterRepository.findOne({
+            where: { id: parameterId, isActive: true },
+          }),
+          this.paymentTypesRepository.findOne({
+            where: { id: paymentTypeId },
+          }),
+          this.productsRepository.find({
+            where: { id: In(productIds), isActive: true },
+          }),
+          this.nats.firstValue('person.findOne', {
+            term: String(personId),
+            field: 'id',
+          }),
+        ]);
+
+      if (!parameter) {
+        return {
+          error: true,
+          message: `El parámetro activo con id ${parameterId} no existe`,
+          data: null,
+        };
+      }
+
+      if (normalizedProducts.length > parameter.maxProducts) {
+        return {
+          error: true,
+          message: `La venta admite un máximo de ${parameter.maxProducts} producto(s)`,
+          data: null,
+        };
+      }
+
+      const productOverAmountLimit = normalizedProducts.find(
+        (item) =>
+          parameter.maxAmountProduct > 0 &&
+          item.amount > parameter.maxAmountProduct,
+      );
+
+      if (productOverAmountLimit) {
+        return {
+          error: true,
+          message: `El producto con id ${productOverAmountLimit.productId} admite una cantidad máxima de ${parameter.maxAmountProduct}`,
+          data: null,
+        };
+      }
+
+      if (!paymentType) {
+        return {
+          error: true,
+          message: `El tipo de pago con id ${paymentTypeId} no existe`,
+          data: null,
+        };
+      }
+
+      if (products.length !== productIds.length) {
+        const existingProductIds = new Set(
+          products.map((product) => product.id),
+        );
+        const missingProductIds = productIds.filter(
+          (productId) => !existingProductIds.has(productId),
+        );
+
+        return {
+          error: true,
+          message: `Los siguientes productos no existen o no están activos: ${missingProductIds.join(', ')}`,
+          data: null,
+        };
+      }
+
+      const productsById = new Map(
+        products.map((product) => [product.id, product]),
+      );
+
+      for (const [index, item] of normalizedProducts.entries()) {
+        const product = productsById.get(item.productId);
+        const currentPrice = Number(product.price);
+
+        if (product.code !== item.code) {
+          return {
+            error: true,
+            message: `El código de salesProducts[${index}] no coincide con el producto vigente`,
+            data: null,
+          };
+        }
+
+        if (!Number.isFinite(currentPrice) || currentPrice !== item.price) {
+          return {
+            error: true,
+            message: `El precio de salesProducts[${index}] no coincide con el precio vigente del producto`,
+            data: null,
+          };
+        }
+      }
+
+      if (personResponse?.serviceStatus === false) {
+        return {
+          error: true,
+          message: 'No se pudo validar la persona en Beneficiarios',
+          data: null,
+        };
+      }
+
+      const person = personResponse?.data ?? personResponse;
+
+      if (!person || Number(person.id) !== personId) {
+        return {
+          error: true,
+          message: `La persona con id ${personId} no existe`,
+          data: null,
+        };
+      }
+
+      const saleTotal = normalizedProducts.reduce(
+        (total, item) => total + item.total,
+        0,
+      );
+
+      if (!Number.isFinite(saleTotal) || saleTotal > 99_999_999.99) {
+        return {
+          error: true,
+          message: 'El total de la venta excede el monto permitido',
+          data: null,
+        };
+      }
+
+      const createdSale = await this.dataSource.transaction(async (manager) => {
+        const sale = await manager.save(
+          manager.create(Sale, {
+            code: null,
+            saleState: SaleState.VIGENTE,
+            personId,
+            transactionId: null,
+            parameter,
+          }),
+        );
+
+        const saleProducts = normalizedProducts.map((item) => {
+          const product = productsById.get(item.productId);
+
+          return manager.create(SaleProduct, {
+            sale,
+            product,
+            name: product.name,
+            price: item.price,
+            amount: item.amount,
+            total: item.total,
+          });
+        });
+        const savedSaleProducts = await manager.save(SaleProduct, saleProducts);
+
+        const voucher = await manager.save(
+          manager.create(Voucher, {
+            sale,
+            customer: null,
+            identityCardCustomer: null,
+            paymentLocationId: null,
+            paymentType,
+            paymentTypeState: PaymentTypeState.NO_PAGADO,
+            total: saleTotal,
+          }),
+        );
+
+        return {
+          sale,
+          saleProducts: savedSaleProducts,
+          voucher,
+        };
+      });
+
+      return {
+        error: false,
+        message: 'Venta creada correctamente',
+        data: {
+          datosIngreso: {
+            personId,
+            paymentTypeId,
+            parameterId,
+            salesProducts: data.salesProducts.map((saleProduct) => ({
+              id: saleProduct.id,
+              name: saleProduct.name,
+              code: saleProduct.code,
+              price: saleProduct.price,
+              amount: saleProduct.amount,
+            })),
+          },
+          sales: {
+            id: createdSale.sale.id,
+            code: createdSale.sale.code,
+            saleState: createdSale.sale.saleState,
+            personId: createdSale.sale.personId,
+            transactionId: createdSale.sale.transactionId,
+            parameterId,
+          },
+          voucher: {
+            id: createdSale.voucher.id,
+            saleId: createdSale.sale.id,
+            customer: createdSale.voucher.customer,
+            identityCardCustomer: createdSale.voucher.identityCardCustomer,
+            paymentLocationId: createdSale.voucher.paymentLocationId,
+            paymentTypeId,
+            paymentTypeState: createdSale.voucher.paymentTypeState,
+            total: Number(createdSale.voucher.total),
+          },
+          saleProducts: createdSale.saleProducts.map((saleProduct) => ({
+            id: saleProduct.id,
+            productId: saleProduct.product.id,
+            name: saleProduct.name,
+            price: Number(saleProduct.price),
+            amount: saleProduct.amount,
+            total: Number(saleProduct.total),
+          })),
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error en createSale: ${error.message}`, error.stack);
+      return {
+        error: true,
+        message: 'Error al crear la venta',
         data: null,
       };
     }
