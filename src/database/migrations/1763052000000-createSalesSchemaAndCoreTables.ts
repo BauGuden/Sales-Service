@@ -167,6 +167,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
         ) THEN
           CREATE TYPE ${this.saleStateEnumPath} AS ENUM (
             'VIGENTE',
+            'PENDIENTE',
             'ANULADO'
           );
         END IF;
@@ -189,7 +190,6 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
         ) THEN
           CREATE TYPE ${this.paymentTypeStateEnumPath} AS ENUM (
             'PAGADO',
-            'PENDIENTE',
             'NO PAGADO'
           );
         END IF;
@@ -480,13 +480,13 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             name: 'code',
             type: 'varchar',
             length: '20',
-            isNullable: false,
+            isNullable: true,
             isUnique: true,
           },
           {
             name: 'sale_state',
             type: this.saleStateEnumPath,
-            default: `'VIGENTE'`,
+            default: `'PENDIENTE'`,
             isNullable: false,
           },
           {
@@ -510,6 +510,23 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             name: 'parameter_id',
             type: 'int',
             isNullable: false,
+          },
+          {
+            name: 'created_at',
+            type: 'timestamp',
+            default: 'now()',
+            isNullable: false,
+          },
+          {
+            name: 'updated_at',
+            type: 'timestamp',
+            default: 'now()',
+            isNullable: false,
+          },
+          {
+            name: 'deleted_at',
+            type: 'timestamp',
+            isNullable: true,
           },
         ],
       }),
@@ -553,18 +570,18 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             name: 'customer',
             type: 'varchar',
             length: '150',
-            isNullable: false,
+            isNullable: true,
           },
           {
             name: 'identity_card_customer',
             type: 'varchar',
             length: '20',
-            isNullable: false,
+            isNullable: true,
           },
           {
             name: 'payment_location_id',
             type: 'int',
-            isNullable: false,
+            isNullable: true,
           },
           {
             name: 'payment_type_id',
@@ -574,7 +591,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           {
             name: 'payment_type_state',
             type: this.paymentTypeStateEnumPath,
-            default: `'PENDIENTE'`,
+            default: `'NO PAGADO'`,
             isNullable: false,
           },
           {
@@ -583,6 +600,23 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             precision: 10,
             scale: 2,
             isNullable: false,
+          },
+          {
+            name: 'created_at',
+            type: 'timestamp',
+            default: 'now()',
+            isNullable: false,
+          },
+          {
+            name: 'updated_at',
+            type: 'timestamp',
+            default: 'now()',
+            isNullable: false,
+          },
+          {
+            name: 'deleted_at',
+            type: 'timestamp',
+            isNullable: true,
           },
         ],
       }),
@@ -637,23 +671,6 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             type: 'varchar',
             length: '150',
             isNullable: false,
-          },
-          {
-            name: 'folder_number',
-            type: 'varchar',
-            length: '50',
-            isNullable: true,
-          },
-          {
-            name: 'voucher_number',
-            type: 'varchar',
-            length: '50',
-            isNullable: true,
-          },
-          {
-            name: 'receipt_date',
-            type: 'date',
-            isNullable: true,
           },
           {
             name: 'price',

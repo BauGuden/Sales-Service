@@ -1,15 +1,19 @@
 export enum SaleState {
   VIGENTE = 'VIGENTE',
+  PENDIENTE = 'PENDIENTE',
   ANULADO = 'ANULADO',
 }
 
 import {
   Column,
+  CreateDateColumn,
+  DeleteDateColumn,
   Entity,
   JoinColumn,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { Parameter } from './parameter.entity';
 import { SaleProduct } from './sale-detail.entity';
@@ -20,15 +24,15 @@ export class Sale {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 20, unique: true })
-  code: string; // VF-0001
+  @Column({ length: 20, unique: true, nullable: true })
+  code: string | null;
 
   @Column({
     name: 'sale_state',
     type: 'enum',
     enum: SaleState,
     enumName: 'sale_state_enum',
-    default: SaleState.VIGENTE,
+    default: SaleState.PENDIENTE,
   })
   saleState: SaleState;
 
@@ -40,6 +44,15 @@ export class Sale {
 
   @Column({ name: 'transaccion_id', length: 50, nullable: true })
   transactionId: string | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  updatedAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamp', nullable: true })
+  deletedAt: Date | null;
 
   @ManyToOne(() => Parameter, (parameter) => parameter.sales, {
     nullable: false,

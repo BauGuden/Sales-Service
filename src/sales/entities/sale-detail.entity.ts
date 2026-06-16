@@ -29,15 +29,6 @@ export class SaleProduct {
   @Column({ name: 'name', length: 150 })
   name: string;
 
-  @Column({ name: 'folder_number', length: 50, nullable: true })
-  folderNumber: string | null;
-
-  @Column({ name: 'voucher_number', length: 50, nullable: true })
-  voucherNumber: string | null;
-
-  @Column({ name: 'receipt_date', type: 'date', nullable: true })
-  receiptDate: Date | null;
-
   @Column({ name: 'price', type: 'decimal', precision: 10, scale: 2 })
   price: number;
 

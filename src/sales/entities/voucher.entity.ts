@@ -1,15 +1,17 @@
 export enum PaymentTypeState {
   PAGADO = 'PAGADO',
-  PENDIENTE = 'PENDIENTE',
   NO_PAGADO = 'NO PAGADO',
 }
 
 import {
   Column,
+  CreateDateColumn,
+  DeleteDateColumn,
   Entity,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { PaymentType } from './payment-type.entity';
 import { Sale } from './sale.entity';
@@ -23,14 +25,14 @@ export class Voucher {
   @JoinColumn({ name: 'sale_id' })
   sale: Sale;
 
-  @Column({ length: 150 })
-  customer: string;
+  @Column({ length: 150, nullable: true })
+  customer: string | null;
 
-  @Column({ name: 'identity_card_customer', length: 20 })
-  identityCardCustomer: string;
+  @Column({ name: 'identity_card_customer', length: 20, nullable: true })
+  identityCardCustomer: string | null;
 
-  @Column({ name: 'payment_location_id', type: 'int' })
-  paymentLocationId: number;
+  @Column({ name: 'payment_location_id', type: 'int', nullable: true })
+  paymentLocationId: number | null;
 
   @ManyToOne(() => PaymentType, (paymentType) => paymentType.vouchers, {
     nullable: false,
@@ -43,10 +45,19 @@ export class Voucher {
     type: 'enum',
     enum: PaymentTypeState,
     enumName: 'payment_type_state_enum',
-    default: PaymentTypeState.PENDIENTE,
+    default: PaymentTypeState.NO_PAGADO,
   })
   paymentTypeState: PaymentTypeState;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   total: number;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  updatedAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamp', nullable: true })
+  deletedAt: Date | null;
 }
