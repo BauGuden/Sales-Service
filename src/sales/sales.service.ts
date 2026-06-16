@@ -571,7 +571,7 @@ export class SalesService {
         personId: number;
         paymentTypeId: number;
         parameterId: number;
-        salesProducts: {
+        saleProducts: {
           id: number;
           name: string;
           code: string;
@@ -626,7 +626,7 @@ export class SalesService {
         };
       }
 
-      if (!Array.isArray(data?.salesProducts) || !data.salesProducts.length) {
+      if (!Array.isArray(data?.saleProducts) || !data.saleProducts.length) {
         return {
           error: true,
           message: 'Debe enviar al menos un producto para crear la venta',
@@ -643,7 +643,7 @@ export class SalesService {
         total: number;
       }[] = [];
 
-      for (const [index, item] of data.salesProducts.entries()) {
+      for (const [index, item] of data.saleProducts.entries()) {
         const productId = Number(item?.id);
         const amount = Number(item?.amount);
         const price = Number(item?.price);
@@ -652,7 +652,7 @@ export class SalesService {
         if (!Number.isInteger(productId) || productId <= 0) {
           return {
             error: true,
-            message: `salesProducts[${index}].id debe ser un número entero mayor a cero`,
+            message: `saleProducts[${index}].id debe ser un número entero mayor a cero`,
             data: null,
           };
         }
@@ -660,7 +660,7 @@ export class SalesService {
         if (!item?.name || typeof item.name !== 'string') {
           return {
             error: true,
-            message: `salesProducts[${index}].name es requerido`,
+            message: `saleProducts[${index}].name es requerido`,
             data: null,
           };
         }
@@ -668,7 +668,7 @@ export class SalesService {
         if (!item?.code || typeof item.code !== 'string') {
           return {
             error: true,
-            message: `salesProducts[${index}].code es requerido`,
+            message: `saleProducts[${index}].code es requerido`,
             data: null,
           };
         }
@@ -676,7 +676,7 @@ export class SalesService {
         if (!Number.isInteger(amount) || amount <= 0) {
           return {
             error: true,
-            message: `salesProducts[${index}].amount debe ser un número entero mayor a cero`,
+            message: `saleProducts[${index}].amount debe ser un número entero mayor a cero`,
             data: null,
           };
         }
@@ -684,7 +684,7 @@ export class SalesService {
         if (!Number.isFinite(price) || price <= 0) {
           return {
             error: true,
-            message: `salesProducts[${index}].price debe ser un monto válido mayor a cero con hasta dos decimales`,
+            message: `saleProducts[${index}].price debe ser un monto válido mayor a cero con hasta dos decimales`,
             data: null,
           };
         }
@@ -790,7 +790,7 @@ export class SalesService {
         if (product.code !== item.code) {
           return {
             error: true,
-            message: `El código de salesProducts[${index}] no coincide con el producto vigente`,
+            message: `El código de saleProducts[${index}] no coincide con el producto vigente`,
             data: null,
           };
         }
@@ -798,7 +798,7 @@ export class SalesService {
         if (!Number.isFinite(currentPrice) || currentPrice !== item.price) {
           return {
             error: true,
-            message: `El precio de salesProducts[${index}] no coincide con el precio vigente del producto`,
+            message: `El precio de saleProducts[${index}] no coincide con el precio vigente del producto`,
             data: null,
           };
         }
@@ -887,7 +887,7 @@ export class SalesService {
             personId,
             paymentTypeId,
             parameterId,
-            salesProducts: data.salesProducts.map((saleProduct) => ({
+            saleProducts: data.saleProducts.map((saleProduct) => ({
               id: saleProduct.id,
               name: saleProduct.name,
               code: saleProduct.code,

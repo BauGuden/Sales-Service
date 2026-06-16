@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsDecimal,
   IsInt,
   IsNotEmpty,
   IsNumberString,
@@ -51,5 +52,6 @@ export class CreateSaleDto {
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CreateSaleProductDto)
-  salesProducts: CreateSaleProductDto[];
+  saleProducts: CreateSaleProductDto[];
+  
 }
