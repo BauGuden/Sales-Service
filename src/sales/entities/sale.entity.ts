@@ -34,7 +34,7 @@ export class Sale {
     enumName: 'sale_state_enum',
     default: SaleState.PENDIENTE,
   })
-  saleState: SaleState;
+  saleState: SaleState = SaleState.PENDIENTE;
 
   @Column({ name: 'person_id', type: 'int' })
   personId: number;

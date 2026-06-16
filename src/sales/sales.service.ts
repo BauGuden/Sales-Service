@@ -836,10 +836,12 @@ export class SalesService {
       }
 
       const createdSale = await this.dataSource.transaction(async (manager) => {
+        const initialSaleState = SaleState.PENDIENTE;
+
         const sale = await manager.save(
           manager.create(Sale, {
             code: null,
-            saleState: SaleState.VIGENTE,
+            saleState: initialSaleState,
             personId,
             transactionId: null,
             parameter,

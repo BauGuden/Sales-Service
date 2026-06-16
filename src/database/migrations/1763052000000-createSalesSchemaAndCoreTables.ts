@@ -486,7 +486,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           {
             name: 'sale_state',
             type: this.saleStateEnumPath,
-            default: `'PENDIENTE'`,
+            default: `'PENDIENTE'::${this.saleStateEnumPath}`,
             isNullable: false,
           },
           {
