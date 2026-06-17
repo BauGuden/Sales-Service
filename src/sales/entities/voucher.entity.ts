@@ -1,6 +1,6 @@
 export enum PaymentTypeState {
   PAGADO = 'PAGADO',
-  NO_PAGADO = 'NO PAGADO',
+  GENERADO = 'GENERADO',
 }
 
 import {
@@ -45,19 +45,22 @@ export class Voucher {
     type: 'enum',
     enum: PaymentTypeState,
     enumName: 'payment_type_state_enum',
-    default: PaymentTypeState.NO_PAGADO,
+    default: PaymentTypeState.GENERADO,
   })
   paymentTypeState: PaymentTypeState;
+
+  @Column({ name: 'deposit_date', type: 'timestamptz', nullable: true })
+  depositDate: Date | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   total: number;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
-  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamp', nullable: true })
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt: Date | null;
 }

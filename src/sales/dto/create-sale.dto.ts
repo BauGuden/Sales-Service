@@ -5,9 +5,9 @@ import {
   IsDecimal,
   IsInt,
   IsNotEmpty,
-  IsNumberString,
   IsPositive,
   IsString,
+  IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
@@ -27,7 +27,7 @@ export class CreateSaleProductDto {
   @MaxLength(20)
   code: string;
 
-  @IsNumberString()
+  @IsDecimal({ decimal_digits: '0,2', force_decimal: false })
   price: string;
 
   @IsInt()
@@ -36,9 +36,8 @@ export class CreateSaleProductDto {
 }
 
 export class CreateSaleDto {
-  @IsInt()
-  @IsPositive()
-  personId: number;
+  @IsUUID()
+  personUuid: string;
 
   @IsInt()
   @IsPositive()
@@ -53,5 +52,4 @@ export class CreateSaleDto {
   @ValidateNested({ each: true })
   @Type(() => CreateSaleProductDto)
   saleProducts: CreateSaleProductDto[];
-  
 }

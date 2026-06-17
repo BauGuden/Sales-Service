@@ -7,4 +7,5 @@ export { PaymentLocationDataDto } from './payment-location-data.dto';
 export { PaymentTypeDataDto } from './payment-type-data.dto';
 export { PersonForCreatingSaleDataDto } from './person-for-creating-sale-data.dto';
 export { ProductDataDto } from './product-data.dto';
+export { SaleListItemDto, SaleListProductDto } from './sale-list-item.dto';
 export { SearchPersonDataDto } from './search-person-data.dto';

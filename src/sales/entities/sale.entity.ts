@@ -34,24 +34,24 @@ export class Sale {
     enumName: 'sale_state_enum',
     default: SaleState.PENDIENTE,
   })
-  saleState: SaleState;
+  saleState: SaleState = SaleState.PENDIENTE;
 
-  @Column({ name: 'person_id', type: 'int' })
-  personId: number;
+  @Column({ name: 'person_uuid', type: 'uuid' })
+  personUuid: string;
 
-  @Column({ type: 'timestamp', default: () => 'now()' })
+  @Column({ type: 'timestamptz', default: () => 'now()' })
   date: Date;
 
   @Column({ name: 'transaccion_id', length: 50, nullable: true })
   transactionId: string | null;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
-  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamp', nullable: true })
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt: Date | null;
 
   @ManyToOne(() => Parameter, (parameter) => parameter.sales, {

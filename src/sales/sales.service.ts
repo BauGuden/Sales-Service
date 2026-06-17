@@ -23,6 +23,7 @@ import {
   PaymentTypeDataDto,
   PersonForCreatingSaleDataDto,
   ProductDataDto,
+  SaleListItemDto,
   SearchPersonDataDto,
 } from './dto';
 
@@ -40,6 +41,8 @@ export class SalesService {
     private readonly paymentTypesRepository: Repository<PaymentType>,
     @InjectRepository(Parameter)
     private readonly parameterRepository: Repository<Parameter>,
+    @InjectRepository(Sale)
+    private readonly salesRepository: Repository<Sale>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -448,6 +451,91 @@ export class SalesService {
     }
   }
 
+  async personDetails(personUuid: string): Promise<{
+    error: boolean;
+    message: string;
+    data: PersonForCreatingSaleDataDto | null;
+  }> {
+    try {
+      if (!personUuid) {
+        return {
+          error: true,
+          message: 'Seleccione una persona para crear la venta.',
+          data: null,
+        };
+      }
+
+      const personResponse = await this.nats.firstValue(
+        'person.findOneWithFeatures',
+        {
+          uuid: personUuid,
+        },
+      );
+
+      if (personResponse?.serviceStatus === false) {
+        return {
+          error: true,
+          message:
+            'No se pudo validar la persona seleccionada. Intente nuevamente.',
+          data: null,
+        };
+      }
+
+      if (personResponse?.error) {
+        return {
+          error: true,
+          message:
+            personResponse.message ??
+            'No se pudo validar la persona seleccionada.',
+          data: null,
+        };
+      }
+
+      const person = personResponse?.data ?? personResponse;
+
+      if (!person) {
+        return {
+          error: true,
+          message: 'No se encontró la persona seleccionada.',
+          data: null,
+        };
+      }
+
+      const {
+        id,
+        firstName,
+        secondName,
+        lastName,
+        mothersLastName,
+        identityCard,
+        nup,
+        features,
+      } = person;
+
+      return {
+        error: false,
+        message: 'Datos de la persona obtenidos correctamente',
+        data: {
+          id,
+          uuidColumn: personUuid,
+          fullName: [firstName, secondName, lastName, mothersLastName]
+            .filter(Boolean)
+            .join(' '),
+          identityCard: identityCard ?? '',
+          nup: nup ?? null,
+          isPolice: features?.isPolice ?? false,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error en personDetails: ${error.message}`, error.stack);
+      return {
+        error: true,
+        message: 'No se pudo validar la persona seleccionada.',
+        data: null,
+      };
+    }
+  }
+
   async forCreatingSale(personUuid: string): Promise<{
     error: boolean;
     message: string;
@@ -468,43 +556,25 @@ export class SalesService {
       }
 
       const [
-        personResponse,
+        personResult,
         groupsResult,
         parametersResult,
         paymentTypesResult,
       ] = await Promise.all([
-        this.nats.firstValue('person.findOneWithFeatures', {
-          uuid: personUuid,
-        }),
+        this.personDetails(personUuid),
         this.groups(),
         this.parameters(),
         this.paymentTypes(),
       ]);
 
-      if (personResponse?.serviceStatus === false) {
-        return {
-          error: true,
-          message: 'Servicio de Beneficiarios no disponible',
-          data: null,
-        };
-      }
-
-      if (personResponse?.error) {
-        return {
-          error: true,
-          message:
-            personResponse.message ??
-            'No se pudieron obtener los datos de la persona',
-          data: null,
-        };
-      }
-
       if (
+        personResult.error ||
         groupsResult.error ||
         parametersResult.error ||
         paymentTypesResult.error
       ) {
         const messages = [
+          personResult.error ? personResult.message : null,
           groupsResult.error ? groupsResult.message : null,
           parametersResult.error ? parametersResult.message : null,
           paymentTypesResult.error ? paymentTypesResult.message : null,
@@ -519,32 +589,11 @@ export class SalesService {
         };
       }
 
-      const person = personResponse?.data ?? personResponse;
-      const {
-        id,
-        firstName,
-        secondName,
-        lastName,
-        mothersLastName,
-        identityCard,
-        nup,
-        features,
-      } = person;
-
       return {
         error: false,
         message: 'Datos para crear la venta obtenidos correctamente',
         data: {
-          person: {
-            id: id,
-            uuidColumn: personUuid,
-            fullName: [firstName, secondName, lastName, mothersLastName]
-              .filter(Boolean)
-              .join(' '),
-            identityCard: identityCard ?? '',
-            nup: nup ?? null,
-            isPolice: features?.isPolice ?? false,
-          },
+          person: personResult.data,
           groups: groupsResult.data ?? [],
           parameters: parametersResult.data,
           paymentTypes: paymentTypesResult.data ?? [],
@@ -568,7 +617,7 @@ export class SalesService {
     message: string;
     data: {
       datosIngreso: {
-        personId: number;
+        personUuid: string;
         paymentTypeId: number;
         parameterId: number;
         saleProducts: {
@@ -583,7 +632,7 @@ export class SalesService {
         id: number;
         code: string | null;
         saleState: SaleState;
-        personId: number;
+        personUuid: string;
         transactionId: string | null;
         parameterId: number;
       };
@@ -595,6 +644,7 @@ export class SalesService {
         paymentLocationId: number | null;
         paymentTypeId: number;
         paymentTypeState: PaymentTypeState;
+        depositDate: Date | null;
         total: number;
       };
       saleProducts: {
@@ -608,108 +658,36 @@ export class SalesService {
     } | null;
   }> {
     try {
-      const personId = Number(data?.personId);
-      const paymentTypeId = Number(data?.paymentTypeId);
-      const parameterId = Number(data?.parameterId);
+      const personUuid = data.personUuid.trim();
+      const paymentTypeId = Number(data.paymentTypeId);
+      const parameterId = Number(data.parameterId);
 
-      const invalidId = [
-        ['personId', personId],
-        ['paymentTypeId', paymentTypeId],
-        ['parameterId', parameterId],
-      ].find(([, value]) => !Number.isInteger(value) || Number(value) <= 0);
-
-      if (invalidId) {
-        return {
-          error: true,
-          message: `${invalidId[0]} debe ser un número entero mayor a cero`,
-          data: null,
-        };
-      }
-
-      if (!Array.isArray(data?.saleProducts) || !data.saleProducts.length) {
-        return {
-          error: true,
-          message: 'Debe enviar al menos un producto para crear la venta',
-          data: null,
-        };
-      }
-
-      const normalizedProducts: {
-        productId: number;
-        name: string;
-        code: string;
-        price: number;
-        amount: number;
-        total: number;
-      }[] = [];
-
-      for (const [index, item] of data.saleProducts.entries()) {
+      const normalizedProducts = data.saleProducts.map((item) => {
         const productId = Number(item?.id);
         const amount = Number(item?.amount);
         const price = Number(item?.price);
-        const total = Number((price * amount).toFixed(2));
 
-        if (!Number.isInteger(productId) || productId <= 0) {
-          return {
-            error: true,
-            message: `saleProducts[${index}].id debe ser un número entero mayor a cero`,
-            data: null,
-          };
-        }
-
-        if (!item?.name || typeof item.name !== 'string') {
-          return {
-            error: true,
-            message: `saleProducts[${index}].name es requerido`,
-            data: null,
-          };
-        }
-
-        if (!item?.code || typeof item.code !== 'string') {
-          return {
-            error: true,
-            message: `saleProducts[${index}].code es requerido`,
-            data: null,
-          };
-        }
-
-        if (!Number.isInteger(amount) || amount <= 0) {
-          return {
-            error: true,
-            message: `saleProducts[${index}].amount debe ser un número entero mayor a cero`,
-            data: null,
-          };
-        }
-
-        if (!Number.isFinite(price) || price <= 0) {
-          return {
-            error: true,
-            message: `saleProducts[${index}].price debe ser un monto válido mayor a cero con hasta dos decimales`,
-            data: null,
-          };
-        }
-
-        normalizedProducts.push({
+        return {
           productId,
           name: item.name.trim(),
           code: item.code.trim(),
           price,
           amount,
-          total,
-        });
-      }
+          total: Number((price * amount).toFixed(2)),
+        };
+      });
 
       const productIds = normalizedProducts.map((item) => item.productId);
 
       if (new Set(productIds).size !== productIds.length) {
         return {
           error: true,
-          message: 'No se puede enviar el mismo producto más de una vez',
+          message: 'Hay un producto repetido en la venta. Revise la selección.',
           data: null,
         };
       }
 
-      const [parameter, paymentType, products, personResponse] =
+      const [parameter, paymentType, products, personResult] =
         await Promise.all([
           this.parameterRepository.findOne({
             where: { id: parameterId, isActive: true },
@@ -720,16 +698,14 @@ export class SalesService {
           this.productsRepository.find({
             where: { id: In(productIds), isActive: true },
           }),
-          this.nats.firstValue('person.findOne', {
-            term: String(personId),
-            field: 'id',
-          }),
+          this.personDetails(personUuid),
         ]);
 
       if (!parameter) {
         return {
           error: true,
-          message: `El parámetro activo con id ${parameterId} no existe`,
+          message:
+            'No se encontró la configuración activa para crear la venta.',
           data: null,
         };
       }
@@ -737,7 +713,7 @@ export class SalesService {
       if (normalizedProducts.length > parameter.maxProducts) {
         return {
           error: true,
-          message: `La venta admite un máximo de ${parameter.maxProducts} producto(s)`,
+          message: `Solo puede seleccionar hasta ${parameter.maxProducts} producto(s) por venta.`,
           data: null,
         };
       }
@@ -751,7 +727,7 @@ export class SalesService {
       if (productOverAmountLimit) {
         return {
           error: true,
-          message: `El producto con id ${productOverAmountLimit.productId} admite una cantidad máxima de ${parameter.maxAmountProduct}`,
+          message: `El producto "${productOverAmountLimit.name}" solo permite una cantidad máxima de ${parameter.maxAmountProduct}.`,
           data: null,
         };
       }
@@ -759,7 +735,7 @@ export class SalesService {
       if (!paymentType) {
         return {
           error: true,
-          message: `El tipo de pago con id ${paymentTypeId} no existe`,
+          message: 'Seleccione un tipo de pago válido.',
           data: null,
         };
       }
@@ -774,7 +750,10 @@ export class SalesService {
 
         return {
           error: true,
-          message: `Los siguientes productos no existen o no están activos: ${missingProductIds.join(', ')}`,
+          message:
+            missingProductIds.length === 1
+              ? 'Uno de los productos seleccionados ya no está disponible.'
+              : 'Algunos productos seleccionados ya no están disponibles.',
           data: null,
         };
       }
@@ -790,7 +769,7 @@ export class SalesService {
         if (product.code !== item.code) {
           return {
             error: true,
-            message: `El código de saleProducts[${index}] no coincide con el producto vigente`,
+            message: `El producto "${item.name}" fue actualizado. Vuelva a seleccionarlo.`,
             data: null,
           };
         }
@@ -798,26 +777,18 @@ export class SalesService {
         if (!Number.isFinite(currentPrice) || currentPrice !== item.price) {
           return {
             error: true,
-            message: `El precio de saleProducts[${index}] no coincide con el precio vigente del producto`,
+            message: `El precio de "${item.name}" cambió. Vuelva a seleccionarlo.`,
             data: null,
           };
         }
       }
 
-      if (personResponse?.serviceStatus === false) {
+      if (personResult.error || !personResult.data) {
         return {
           error: true,
-          message: 'No se pudo validar la persona en Beneficiarios',
-          data: null,
-        };
-      }
-
-      const person = personResponse?.data ?? personResponse;
-
-      if (!person || Number(person.id) !== personId) {
-        return {
-          error: true,
-          message: `La persona con id ${personId} no existe`,
+          message: personResult.error
+            ? personResult.message
+            : 'No se encontró la persona seleccionada.',
           data: null,
         };
       }
@@ -830,17 +801,19 @@ export class SalesService {
       if (!Number.isFinite(saleTotal) || saleTotal > 99_999_999.99) {
         return {
           error: true,
-          message: 'El total de la venta excede el monto permitido',
+          message: 'El monto total de la venta supera el límite permitido.',
           data: null,
         };
       }
 
       const createdSale = await this.dataSource.transaction(async (manager) => {
+        const initialSaleState = SaleState.PENDIENTE;
+
         const sale = await manager.save(
           manager.create(Sale, {
             code: null,
-            saleState: SaleState.VIGENTE,
-            personId,
+            saleState: initialSaleState,
+            personUuid,
             transactionId: null,
             parameter,
           }),
@@ -867,7 +840,8 @@ export class SalesService {
             identityCardCustomer: null,
             paymentLocationId: null,
             paymentType,
-            paymentTypeState: PaymentTypeState.NO_PAGADO,
+            paymentTypeState: PaymentTypeState.GENERADO,
+            depositDate: null,
             total: saleTotal,
           }),
         );
@@ -884,7 +858,7 @@ export class SalesService {
         message: 'Venta creada correctamente',
         data: {
           datosIngreso: {
-            personId,
+            personUuid,
             paymentTypeId,
             parameterId,
             saleProducts: data.saleProducts.map((saleProduct) => ({
@@ -899,7 +873,7 @@ export class SalesService {
             id: createdSale.sale.id,
             code: createdSale.sale.code,
             saleState: createdSale.sale.saleState,
-            personId: createdSale.sale.personId,
+            personUuid: createdSale.sale.personUuid,
             transactionId: createdSale.sale.transactionId,
             parameterId,
           },
@@ -911,6 +885,7 @@ export class SalesService {
             paymentLocationId: createdSale.voucher.paymentLocationId,
             paymentTypeId,
             paymentTypeState: createdSale.voucher.paymentTypeState,
+            depositDate: createdSale.voucher.depositDate,
             total: Number(createdSale.voucher.total),
           },
           saleProducts: createdSale.saleProducts.map((saleProduct) => ({
@@ -931,5 +906,130 @@ export class SalesService {
         data: null,
       };
     }
+  }
+
+  async listSales(): Promise<{
+    error: boolean;
+    message: string;
+    data: SaleListItemDto[] | null;
+  }> {
+    try {
+      const sales = await this.salesRepository
+        .createQueryBuilder('sale')
+        .leftJoinAndSelect('sale.saleProducts', 'saleProduct')
+        .leftJoinAndSelect('saleProduct.product', 'product')
+        .leftJoinAndSelect('sale.vouchers', 'voucher')
+        .leftJoinAndSelect('voucher.paymentType', 'paymentType')
+        .select([
+          'sale.id',
+          'sale.code',
+          'sale.saleState',
+          'sale.personUuid',
+          'sale.date',
+          'saleProduct.id',
+          'saleProduct.name',
+          'saleProduct.price',
+          'saleProduct.amount',
+          'saleProduct.total',
+          'product.id',
+          'voucher.id',
+          'voucher.customer',
+          'voucher.identityCardCustomer',
+          'voucher.depositDate',
+          'voucher.total',
+          'paymentType.id',
+          'paymentType.name',
+          'paymentType.shortened',
+        ])
+        .orderBy('sale.date', 'DESC')
+        .addOrderBy('sale.id', 'DESC')
+        .addOrderBy('saleProduct.id', 'ASC')
+        .getMany();
+
+      const personUuids = [
+        ...new Set(sales.map((sale) => sale.personUuid).filter(Boolean)),
+      ];
+      const personResults = await Promise.all(
+        personUuids.map((personUuid) => this.personDetails(personUuid)),
+      );
+      const personsByUuid = new Map<string, PersonForCreatingSaleDataDto>();
+
+      for (const [index, personResult] of personResults.entries()) {
+        if (personResult.error || !personResult.data) {
+          return {
+            error: true,
+            message: personResult.error
+              ? personResult.message
+              : 'No se encontró una de las personas de las ventas.',
+            data: null,
+          };
+        }
+
+        personsByUuid.set(personUuids[index], personResult.data);
+      }
+
+      const data: SaleListItemDto[] = sales.map((sale) => {
+        const person = personsByUuid.get(sale.personUuid);
+        const voucher = sale.vouchers?.[0] ?? null;
+
+        if (!person) {
+          throw new Error('No se encontró una de las personas de las ventas.');
+        }
+
+        const saleDate = this.formatBoliviaDateParts(sale.date);
+
+        return {
+          saleId: sale.id,
+          code: sale.code,
+          saleState: sale.saleState,
+          personUuid: sale.personUuid,
+          fullName: person.fullName,
+          identityCard: person.identityCard,
+          nup: person.nup,
+          isPolice: person.isPolice,
+          hourSale: saleDate.hourSale,
+          dateSaleFormat: saleDate.dateSaleFormat,
+          products: (sale.saleProducts ?? []).map((saleProduct) => ({
+            productId: saleProduct.product.id,
+            name: saleProduct.name,
+            price: Number(saleProduct.price),
+            amount: saleProduct.amount,
+            subTotal: Number(saleProduct.total),
+          })),
+          name: voucher?.paymentType?.name ?? null,
+          shortened: voucher?.paymentType?.shortened ?? null,
+          depositDate: voucher?.depositDate ?? null,
+          total: voucher ? Number(voucher.total) : null,
+        };
+      });
+
+      return {
+        error: false,
+        message: 'Ventas obtenidas correctamente',
+        data,
+      };
+    } catch (error) {
+      this.logger.error(`Error en listSales: ${error.message}`, error.stack);
+      return {
+        error: true,
+        message: 'Error al obtener las ventas',
+        data: null,
+      };
+    }
+  }
+
+  private formatBoliviaDateParts(date: Date): {
+    hourSale: string;
+    dateSaleFormat: string;
+  } {
+    const boliviaOffsetMs = 4 * 60 * 60 * 1000;
+    const boliviaDate = new Date(date.getTime() - boliviaOffsetMs);
+    const [datePart, timePart] = boliviaDate.toISOString().split('T');
+    const [year, month, day] = datePart.split('-');
+
+    return {
+      hourSale: timePart.slice(0, 8),
+      dateSaleFormat: `${day}/${month}/${year}`,
+    };
   }
 }

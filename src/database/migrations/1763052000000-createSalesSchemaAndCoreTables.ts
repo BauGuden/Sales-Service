@@ -77,7 +77,7 @@ const PARAMETER = {
   id: 1,
   maxAmountProduct: 1,
   maxProducts: 1,
-  currencySymbol: 'BS',
+  currencySymbol: 'bs',
   isActive: true,
 } as const;
 
@@ -190,7 +190,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
         ) THEN
           CREATE TYPE ${this.paymentTypeStateEnumPath} AS ENUM (
             'PAGADO',
-            'NO PAGADO'
+            'GENERADO'
           );
         END IF;
       END $$;`,
@@ -234,19 +234,19 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           },
           {
             name: 'created_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'updated_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'deleted_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             isNullable: true,
           },
         ],
@@ -297,19 +297,19 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           },
           {
             name: 'created_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'updated_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'deleted_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             isNullable: true,
           },
         ],
@@ -367,19 +367,19 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           },
           {
             name: 'created_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'updated_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'deleted_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             isNullable: true,
           },
         ],
@@ -439,19 +439,19 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           },
           {
             name: 'created_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'updated_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'deleted_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             isNullable: true,
           },
         ],
@@ -486,17 +486,17 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           {
             name: 'sale_state',
             type: this.saleStateEnumPath,
-            default: `'PENDIENTE'`,
+            default: `'PENDIENTE'::${this.saleStateEnumPath}`,
             isNullable: false,
           },
           {
-            name: 'person_id',
-            type: 'int',
+            name: 'person_uuid',
+            type: 'uuid',
             isNullable: false,
           },
           {
             name: 'date',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
@@ -513,19 +513,19 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           },
           {
             name: 'created_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'updated_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'deleted_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             isNullable: true,
           },
         ],
@@ -591,8 +591,13 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           {
             name: 'payment_type_state',
             type: this.paymentTypeStateEnumPath,
-            default: `'NO PAGADO'`,
+            default: `'GENERADO'`,
             isNullable: false,
+          },
+          {
+            name: 'deposit_date',
+            type: 'timestamptz',
+            isNullable: true,
           },
           {
             name: 'total',
@@ -603,19 +608,19 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           },
           {
             name: 'created_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'updated_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'deleted_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             isNullable: true,
           },
         ],
@@ -698,19 +703,19 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           },
           {
             name: 'created_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'updated_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             default: 'now()',
             isNullable: false,
           },
           {
             name: 'deleted_at',
-            type: 'timestamp',
+            type: 'timestamptz',
             isNullable: true,
           },
         ],

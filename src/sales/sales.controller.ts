@@ -54,5 +54,9 @@ export class SalesController {
   async create(@Payload('data') data: CreateSaleDto) {
     return this.salesService.createSale(data);
   }
-  
+
+  @MessagePattern('sales.list')
+  async listSales() {
+    return this.salesService.listSales();
+  }
 }
