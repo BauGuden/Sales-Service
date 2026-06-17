@@ -644,6 +644,7 @@ export class SalesService {
         paymentLocationId: number | null;
         paymentTypeId: number;
         paymentTypeState: PaymentTypeState;
+        depositDate: Date | null;
         total: number;
       };
       saleProducts: {
@@ -840,6 +841,7 @@ export class SalesService {
             paymentLocationId: null,
             paymentType,
             paymentTypeState: PaymentTypeState.GENERADO,
+            depositDate: null,
             total: saleTotal,
           }),
         );
@@ -883,6 +885,7 @@ export class SalesService {
             paymentLocationId: createdSale.voucher.paymentLocationId,
             paymentTypeId,
             paymentTypeState: createdSale.voucher.paymentTypeState,
+            depositDate: createdSale.voucher.depositDate,
             total: Number(createdSale.voucher.total),
           },
           saleProducts: createdSale.saleProducts.map((saleProduct) => ({
@@ -932,6 +935,7 @@ export class SalesService {
           'voucher.id',
           'voucher.customer',
           'voucher.identityCardCustomer',
+          'voucher.depositDate',
           'voucher.total',
           'paymentType.id',
           'paymentType.name',
@@ -994,6 +998,7 @@ export class SalesService {
           })),
           name: voucher?.paymentType?.name ?? null,
           shortened: voucher?.paymentType?.shortened ?? null,
+          depositDate: voucher?.depositDate ?? null,
           total: voucher ? Number(voucher.total) : null,
         };
       });

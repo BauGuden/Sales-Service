@@ -595,6 +595,11 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             isNullable: false,
           },
           {
+            name: 'deposit_date',
+            type: 'timestamptz',
+            isNullable: true,
+          },
+          {
             name: 'total',
             type: 'decimal',
             precision: 10,

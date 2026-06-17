@@ -49,6 +49,9 @@ export class Voucher {
   })
   paymentTypeState: PaymentTypeState;
 
+  @Column({ name: 'deposit_date', type: 'timestamptz', nullable: true })
+  depositDate: Date | null;
+
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   total: number;
 
