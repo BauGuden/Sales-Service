@@ -1,6 +1,6 @@
 import { IsInt, IsPositive, IsString, MaxLength } from 'class-validator';
 
-export class PaymentLocationDataDto {
+export class FinancialEntitiesDto {
   @IsInt()
   @IsPositive()
   id: number;

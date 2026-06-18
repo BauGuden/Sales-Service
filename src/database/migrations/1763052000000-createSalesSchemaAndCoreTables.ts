@@ -100,6 +100,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
     await this.createPaymentTypesTable(queryRunner);
     await this.createSalesTable(queryRunner);
     await this.createVouchersTable(queryRunner);
+    await this.createQrPaymentsTable(queryRunner);
     await this.createSaleProductsTable(queryRunner);
     await this.seedCatalogs(queryRunner);
   }
@@ -108,6 +109,15 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
     if (await queryRunner.hasTable(`${this.schema}.sale_products`)) {
       await queryRunner.dropTable(
         `${this.schema}.sale_products`,
+        true,
+        true,
+        true,
+      );
+    }
+
+    if (await queryRunner.hasTable(`${this.schema}.qr_payments`)) {
+      await queryRunner.dropTable(
+        `${this.schema}.qr_payments`,
         true,
         true,
         true,
@@ -190,7 +200,8 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
         ) THEN
           CREATE TYPE ${this.paymentTypeStateEnumPath} AS ENUM (
             'PAGADO',
-            'GENERADO'
+            'GENERADO',
+            'RECHAZADO'
           );
         END IF;
       END $$;`,
@@ -645,6 +656,85 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
         onUpdate: 'NO ACTION',
       }),
     ]);
+  }
+
+  private async createQrPaymentsTable(queryRunner: QueryRunner): Promise<void> {
+    if (await queryRunner.hasTable(`${this.schema}.qr_payments`)) {
+      return;
+    }
+
+    await queryRunner.createTable(
+      new Table({
+        schema: this.schema,
+        name: 'qr_payments',
+        columns: [
+          {
+            name: 'id',
+            type: 'int',
+            isPrimary: true,
+            isGenerated: true,
+            generationStrategy: 'increment',
+          },
+          {
+            name: 'voucher_id',
+            type: 'int',
+            isNullable: false,
+            isUnique: true,
+          },
+          {
+            name: 'bcb_qr_id',
+            type: 'varchar',
+            length: '50',
+            isNullable: false,
+            isUnique: true,
+          },
+          {
+            name: 'qr_image',
+            type: 'text',
+            isNullable: false,
+          },
+          {
+            name: 'qr_response',
+            type: 'jsonb',
+            isNullable: false,
+          },
+          {
+            name: 'qr_status_response',
+            type: 'jsonb',
+            isNullable: true,
+          },
+          {
+            name: 'created_at',
+            type: 'timestamptz',
+            default: 'now()',
+            isNullable: false,
+          },
+          {
+            name: 'updated_at',
+            type: 'timestamptz',
+            default: 'now()',
+            isNullable: false,
+          },
+          {
+            name: 'deleted_at',
+            type: 'timestamptz',
+            isNullable: true,
+          },
+        ],
+      }),
+    );
+
+    await queryRunner.createForeignKey(
+      `${this.schema}.qr_payments`,
+      new TableForeignKey({
+        columnNames: ['voucher_id'],
+        referencedSchema: this.schema,
+        referencedTableName: 'vouchers',
+        referencedColumnNames: ['id'],
+        onDelete: 'CASCADE',
+        onUpdate: 'NO ACTION',
+      }),
+    );
   }
 
   private async createSaleProductsTable(

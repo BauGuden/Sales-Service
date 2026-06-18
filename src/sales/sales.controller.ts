@@ -1,6 +1,6 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-import { CreateSaleDto } from './dto';
+import { CreateSaleDto, GetQrCodeDto, GetQrCodeStatusDto } from './dto';
 import { SalesService } from './sales.service';
 
 @Controller()
@@ -25,9 +25,9 @@ export class SalesController {
     return this.salesService.productsGroup(groupId);
   }
 
-  @MessagePattern('sales.paymentLocations')
-  async paymentLocations() {
-    return this.salesService.paymentLocations();
+  @MessagePattern('sales.financialEntities')
+  async financialEntities() {
+    return this.salesService.financialEntities();
   }
 
   @MessagePattern('sales.paymentTypes')
@@ -58,5 +58,15 @@ export class SalesController {
   @MessagePattern('sales.list')
   async listSales() {
     return this.salesService.listSales();
+  }
+
+  @MessagePattern('sales.getQRCode')
+  async getQRCode(@Payload() data: GetQrCodeDto) {
+    return this.salesService.getQRCode(data);
+  }
+
+  @MessagePattern('sales.getQRCodeStatus')
+  async getQRCodeStatus(@Payload() data: GetQrCodeStatusDto) {
+    return this.salesService.getQRCodeStatus(data);
   }
 }

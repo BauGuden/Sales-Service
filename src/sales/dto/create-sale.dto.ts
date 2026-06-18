@@ -1,10 +1,13 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  IsBoolean,
   IsArray,
-  IsDecimal,
   IsInt,
   IsNotEmpty,
+  IsNumberString,
+  IsObject,
+  IsOptional,
   IsPositive,
   IsString,
   IsUUID,
@@ -27,12 +30,65 @@ export class CreateSaleProductDto {
   @MaxLength(20)
   code: string;
 
-  @IsDecimal({ decimal_digits: '0,2', force_decimal: false })
+  @IsNumberString()
   price: string;
 
   @IsInt()
   @IsPositive()
   amount: number;
+}
+
+export class BcbQrDataDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  titularDestinatario: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  ciNitDestinatario: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  eif: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  cuentaDestino: string;
+
+  @IsOptional()
+  @IsObject()
+  cuentaDestinoDistribucion?: Record<string, number>;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(3)
+  codMoneda: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  glosa?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(19)
+  fechaVencimiento: string;
+
+  @IsBoolean()
+  unicoUso: boolean;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  codigoServicio: string;
+
+  @IsOptional()
+  @IsObject()
+  metaData?: Record<string, unknown>;
 }
 
 export class CreateSaleDto {
@@ -52,4 +108,9 @@ export class CreateSaleDto {
   @ValidateNested({ each: true })
   @Type(() => CreateSaleProductDto)
   saleProducts: CreateSaleProductDto[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BcbQrDataDto)
+  qrData?: BcbQrDataDto;
 }

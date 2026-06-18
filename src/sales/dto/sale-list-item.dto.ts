@@ -22,6 +22,7 @@ export class SaleListItemDto {
   products: SaleListProductDto[];
   name: string | null;
   shortened: string | null;
+  bcbQrId: string | null;
   depositDate: Date | null;
   total: number | null;
 }
