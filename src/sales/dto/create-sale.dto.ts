@@ -3,6 +3,7 @@ import {
   ArrayMinSize,
   IsBoolean,
   IsArray,
+  IsDateString,
   IsInt,
   IsNotEmpty,
   IsNumberString,
@@ -16,9 +17,15 @@ import {
 } from 'class-validator';
 
 export class CreateSaleProductDto {
+  @IsOptional()
   @IsInt()
   @IsPositive()
-  id: number;
+  id?: number;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  productId?: number;
 
   @IsString()
   @IsNotEmpty()
@@ -91,6 +98,27 @@ export class BcbQrDataDto {
   metaData?: Record<string, unknown>;
 }
 
+export class CreateSaleVoucherDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  customer?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  identityCardCustomer?: string;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  paymentLocationId?: number;
+
+  @IsOptional()
+  @IsDateString()
+  depositDate?: string;
+}
+
 export class CreateSaleDto {
   @IsUUID()
   personUuid: string;
@@ -113,4 +141,25 @@ export class CreateSaleDto {
   @ValidateNested()
   @Type(() => BcbQrDataDto)
   qrData?: BcbQrDataDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateSaleVoucherDto)
+  voucher?: CreateSaleVoucherDto;
+
+  @IsOptional()
+  @IsString()
+  qrId?: string;
+
+  @IsOptional()
+  @IsString()
+  bcbQrId?: string;
+
+  @IsOptional()
+  @IsString()
+  qrImage?: string;
+
+  @IsOptional()
+  @IsObject()
+  qrResponse?: Record<string, unknown>;
 }

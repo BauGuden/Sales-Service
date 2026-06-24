@@ -1,6 +1,6 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-import { CreateSaleDto, GetQrCodeDto, GetQrCodeStatusDto } from './dto';
+import { CreateSaleDto, GenerarQrDto, GetQrCodeStatusDto } from './dto';
 import { SalesService } from './sales.service';
 
 @Controller()
@@ -50,23 +50,23 @@ export class SalesController {
     return this.salesService.forCreatingSale(personUuid);
   }
 
+  @MessagePattern('sales.generarQR')
+  async generarQR(@Payload() data: GenerarQrDto) {
+    return this.salesService.generarQR(data);
+  }
+
   @MessagePattern('sales.createSale')
-  async create(@Payload('data') data: CreateSaleDto) {
+  async createSale(@Payload('data') data: CreateSaleDto) {
     return this.salesService.createSale(data);
-  }
-
-  @MessagePattern('sales.list')
-  async listSales() {
-    return this.salesService.listSales();
-  }
-
-  @MessagePattern('sales.getQRCode')
-  async getQRCode(@Payload() data: GetQrCodeDto) {
-    return this.salesService.getQRCode(data);
   }
 
   @MessagePattern('sales.getQRCodeStatus')
   async getQRCodeStatus(@Payload() data: GetQrCodeStatusDto) {
     return this.salesService.getQRCodeStatus(data);
+  }
+
+  @MessagePattern('sales.list')
+  async listSales() {
+    return this.salesService.listSales();
   }
 }

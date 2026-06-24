@@ -1,22 +1,33 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
+  IsArray,
   IsInt,
   IsOptional,
   IsPositive,
   IsString,
+  IsUUID,
   ValidateNested,
 } from 'class-validator';
-import { BcbQrDataDto } from './create-sale.dto';
+import { CreateSaleProductDto } from './create-sale.dto';
 
-export class GetQrCodeDto {
+export class GenerarQrDto {
+  @IsUUID()
+  personUuid: string;
+
   @IsInt()
   @IsPositive()
-  saleId: number;
+  paymentTypeId: number;
 
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => BcbQrDataDto)
-  qrData?: BcbQrDataDto;
+  @IsInt()
+  @IsPositive()
+  parameterId: number;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateSaleProductDto)
+  saleProducts: CreateSaleProductDto[];
 }
 
 export class GetQrCodeStatusDto {

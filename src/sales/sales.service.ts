@@ -19,7 +19,7 @@ import {
   AccountLookupDataDto,
   BcbQrDataDto,
   CreateSaleDto,
-  GetQrCodeDto,
+  GenerarQrDto,
   GetQrCodeStatusDto,
   FinancialEntitiesDto,
   GroupDataDto,
@@ -633,6 +633,102 @@ export class SalesService {
     }
   }
 
+  async generarQR(data: GenerarQrDto): Promise<{
+    error: boolean;
+    message: string;
+    data: {
+      personUuid: string;
+      paymentTypeId: number;
+      parameterId: number;
+      total: number;
+      person: PersonForCreatingSaleDataDto;
+      saleProducts: {
+        productId: number;
+        name: string;
+        code: string;
+        price: string;
+        amount: number;
+      }[];
+      qrPayment: {
+        destinationAccount: string;
+        accountNumber: string;
+        ctaDestino: string;
+        fechaVencimientoQR: string;
+        bcbQrId: string;
+        qrImage: string;
+      };
+    } | null;
+  }> {
+    try {
+      const validation = await this.validateSaleInput(data);
+
+      if (validation.error) {
+        return validation;
+      }
+
+      if (!this.isQrPaymentType(validation.paymentType)) {
+        return {
+          error: true,
+          message: 'El tipo de pago seleccionado no corresponde a QR.',
+          data: null,
+        };
+      }
+
+      const qrData = await this.buildQrDataFromGlobalAccount(
+        validation.products,
+        validation.saleTotal,
+        validation.normalizedProducts,
+      );
+      const qrDataErrors = this.validateBcbQrData(qrData);
+
+      if (qrDataErrors.length > 0) {
+        return {
+          error: true,
+          message: `Datos QR incompletos: ${qrDataErrors.join(', ')}`,
+          data: null,
+        };
+      }
+
+      const generatedQr = await this.generateBcbQr(
+        this.buildBcbQrPayload(
+          qrData,
+          { id: null, personUuid: validation.personUuid },
+          validation.saleTotal,
+          validation.normalizedProducts,
+          validation.person,
+        ),
+      );
+
+      return {
+        error: false,
+        message: 'QR generado correctamente',
+        data: {
+          personUuid: validation.personUuid,
+          paymentTypeId: validation.paymentTypeId,
+          parameterId: validation.parameterId,
+          total: validation.saleTotal,
+          person: validation.person,
+          saleProducts: this.mapInputSaleProducts(data.saleProducts),
+          qrPayment: {
+            destinationAccount: qrData.destinationAccount,
+            accountNumber: qrData.accountNumber,
+            ctaDestino: qrData.ctaDestino,
+            fechaVencimientoQR: qrData.fechaVencimientoQR,
+            bcbQrId: String(generatedQr.datos.idQr),
+            qrImage: String(generatedQr.datos.imagenQr),
+          },
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error en generarQR: ${error.message}`, error.stack);
+      return {
+        error: true,
+        message: error.message ?? 'Error al generar el QR',
+        data: null,
+      };
+    }
+  }
+
   async createSale(data: CreateSaleDto): Promise<{
     error: boolean;
     message: string;
@@ -642,7 +738,7 @@ export class SalesService {
         paymentTypeId: number;
         parameterId: number;
         saleProducts: {
-          id: number;
+          productId: number;
           name: string;
           code: string;
           price: string;
@@ -686,184 +782,61 @@ export class SalesService {
     } | null;
   }> {
     try {
-      const personUuid = data.personUuid.trim();
-      const paymentTypeId = Number(data.paymentTypeId);
-      const parameterId = Number(data.parameterId);
+      const validation = await this.validateSaleInput(data);
 
-      const normalizedProducts: NormalizedSaleProductDto[] =
-        data.saleProducts.map((item) => {
-          const productId = Number(item?.id);
-          const amount = Number(item?.amount);
-          const price = Number(item?.price);
+      if (validation.error) {
+        return validation;
+      }
 
+      const isQrPayment = this.isQrPaymentType(validation.paymentType);
+      const qrId = (data.qrId ?? data.bcbQrId ?? '').trim();
+      let paidQr: {
+        qrId: string;
+        response: Record<string, unknown>;
+        processedOrder: any;
+        depositDate: Date;
+      } | null = null;
+
+      if (isQrPayment) {
+        if (!qrId) {
           return {
-            productId,
-            name: item.name.trim(),
-            code: item.code.trim(),
-            price,
-            amount,
-            total: Number((price * amount).toFixed(2)),
+            error: true,
+            message:
+              'Debe enviar qrId o bcbQrId del QR pagado para crear la venta.',
+            data: null,
           };
+        }
+
+        const existingQrPayment = await this.qrPaymentsRepository.findOne({
+          where: { bcbQrId: qrId },
         });
 
-      const productIds = normalizedProducts.map((item) => item.productId);
-
-      if (new Set(productIds).size !== productIds.length) {
-        return {
-          error: true,
-          message: 'Hay un producto repetido en la venta. Revise la selección.',
-          data: null,
-        };
-      }
-
-      const [parameter, paymentType, products, personResult] =
-        await Promise.all([
-          this.parameterRepository.findOne({
-            where: { id: parameterId, isActive: true },
-          }),
-          this.paymentTypesRepository.findOne({
-            where: { id: paymentTypeId },
-          }),
-          this.productsRepository.find({
-            where: { id: In(productIds), isActive: true },
-          }),
-          this.personDetails(personUuid),
-        ]);
-
-      if (!parameter) {
-        return {
-          error: true,
-          message:
-            'No se encontró la configuración activa para crear la venta.',
-          data: null,
-        };
-      }
-
-      if (normalizedProducts.length > parameter.maxProducts) {
-        return {
-          error: true,
-          message: `Solo puede seleccionar hasta ${parameter.maxProducts} producto(s) por venta.`,
-          data: null,
-        };
-      }
-
-      const productOverAmountLimit = normalizedProducts.find(
-        (item) =>
-          parameter.maxAmountProduct > 0 &&
-          item.amount > parameter.maxAmountProduct,
-      );
-
-      if (productOverAmountLimit) {
-        return {
-          error: true,
-          message: `El producto "${productOverAmountLimit.name}" solo permite una cantidad máxima de ${parameter.maxAmountProduct}.`,
-          data: null,
-        };
-      }
-
-      if (!paymentType) {
-        return {
-          error: true,
-          message: 'Seleccione un tipo de pago válido.',
-          data: null,
-        };
-      }
-
-      if (products.length !== productIds.length) {
-        const existingProductIds = new Set(
-          products.map((product) => product.id),
-        );
-        const missingProductIds = productIds.filter(
-          (productId) => !existingProductIds.has(productId),
-        );
-
-        return {
-          error: true,
-          message:
-            missingProductIds.length === 1
-              ? 'Uno de los productos seleccionados ya no está disponible.'
-              : 'Algunos productos seleccionados ya no están disponibles.',
-          data: null,
-        };
-      }
-
-      const productsById = new Map(
-        products.map((product) => [product.id, product]),
-      );
-
-      for (const [index, item] of normalizedProducts.entries()) {
-        const product = productsById.get(item.productId);
-        const currentPrice = Number(product.price);
-
-        if (product.code !== item.code) {
+        if (existingQrPayment) {
           return {
             error: true,
-            message: `El producto "${item.name}" fue actualizado. Vuelva a seleccionarlo.`,
+            message: 'Este QR ya fue registrado en una venta.',
             data: null,
           };
         }
 
-        if (!Number.isFinite(currentPrice) || currentPrice !== item.price) {
-          return {
-            error: true,
-            message: `El precio de "${item.name}" cambió. Vuelva a seleccionarlo.`,
-            data: null,
-          };
-        }
-      }
-
-      if (personResult.error || !personResult.data) {
-        return {
-          error: true,
-          message: personResult.error
-            ? personResult.message
-            : 'No se encontró la persona seleccionada.',
-          data: null,
-        };
-      }
-
-      const shouldGenerateQr = this.isQrPaymentType(paymentType);
-
-      if (shouldGenerateQr) {
-        const qrDataErrors = this.validateBcbQrData(data.qrData);
-
-        if (qrDataErrors.length > 0) {
-          return {
-            error: true,
-            message: `Datos QR incompletos: ${qrDataErrors.join(', ')}`,
-            data: null,
-          };
-        }
-      }
-
-      const saleTotal = normalizedProducts.reduce(
-        (total, item) => total + item.total,
-        0,
-      );
-
-      if (!Number.isFinite(saleTotal) || saleTotal > 99_999_999.99) {
-        return {
-          error: true,
-          message: 'El monto total de la venta supera el límite permitido.',
-          data: null,
-        };
+        paidQr = await this.ensureBcbQrPaid(qrId);
       }
 
       const createdSale = await this.dataSource.transaction(async (manager) => {
-        const initialSaleState = SaleState.PENDIENTE;
-
         const sale = await manager.save(
           manager.create(Sale, {
             code: null,
-            saleState: initialSaleState,
-            personUuid,
-            transactionId: null,
-            parameter,
+            saleState: SaleState.VIGENTE,
+            personUuid: validation.personUuid,
+            transactionId: paidQr?.processedOrder?.idOrdenDestinatario
+              ? String(paidQr.processedOrder.idOrdenDestinatario)
+              : null,
+            parameter: validation.parameter,
           }),
         );
 
-        const saleProducts = normalizedProducts.map((item) => {
-          const product = productsById.get(item.productId);
+        const saleProducts = validation.normalizedProducts.map((item) => {
+          const product = validation.productsById.get(item.productId);
 
           return manager.create(SaleProduct, {
             sale,
@@ -879,35 +852,35 @@ export class SalesService {
         const voucher = await manager.save(
           manager.create(Voucher, {
             sale,
-            customer: null,
-            identityCardCustomer: null,
-            paymentLocationId: null,
-            paymentType,
-            paymentTypeState: PaymentTypeState.GENERADO,
-            depositDate: null,
-            total: saleTotal,
+            customer:
+              data.voucher?.customer?.trim() ||
+              paidQr?.processedOrder?.nombreOriginante ||
+              null,
+            identityCardCustomer:
+              data.voucher?.identityCardCustomer?.trim() ||
+              paidQr?.processedOrder?.ciNitOriginante ||
+              null,
+            paymentLocationId: data.voucher?.paymentLocationId ?? null,
+            paymentType: validation.paymentType,
+            paymentTypeState: PaymentTypeState.PAGADO,
+            depositDate: isQrPayment
+              ? paidQr.depositDate
+              : (this.parseOptionalDate(data.voucher?.depositDate) ??
+                new Date()),
+            total: validation.saleTotal,
           }),
         );
 
         let qrPayment: QrPayment | null = null;
 
-        if (shouldGenerateQr) {
-          const qrPayload = this.buildBcbQrPayload(
-            data.qrData,
-            sale,
-            saleTotal,
-            normalizedProducts,
-            personResult.data,
-          );
-          const generatedQr = await this.generateBcbQr(qrPayload);
-
+        if (isQrPayment) {
           qrPayment = await manager.save(
             manager.create(QrPayment, {
               voucher,
-              bcbQrId: String(generatedQr.datos.idQr),
-              qrImage: String(generatedQr.datos.imagenQr),
-              qrResponse: generatedQr,
-              qrStatusResponse: null,
+              bcbQrId: paidQr.qrId,
+              qrImage: data.qrImage ?? '',
+              qrResponse: data.qrResponse ?? paidQr.response,
+              qrStatusResponse: paidQr.response,
             }),
           );
         }
@@ -925,16 +898,10 @@ export class SalesService {
         message: 'Venta creada correctamente',
         data: {
           datosIngreso: {
-            personUuid,
-            paymentTypeId,
-            parameterId,
-            saleProducts: data.saleProducts.map((saleProduct) => ({
-              id: saleProduct.id,
-              name: saleProduct.name,
-              code: saleProduct.code,
-              price: saleProduct.price,
-              amount: saleProduct.amount,
-            })),
+            personUuid: validation.personUuid,
+            paymentTypeId: validation.paymentTypeId,
+            parameterId: validation.parameterId,
+            saleProducts: this.mapInputSaleProducts(data.saleProducts),
           },
           sales: {
             id: createdSale.sale.id,
@@ -942,7 +909,7 @@ export class SalesService {
             saleState: createdSale.sale.saleState,
             personUuid: createdSale.sale.personUuid,
             transactionId: createdSale.sale.transactionId,
-            parameterId,
+            parameterId: validation.parameterId,
           },
           voucher: {
             id: createdSale.voucher.id,
@@ -950,7 +917,7 @@ export class SalesService {
             customer: createdSale.voucher.customer,
             identityCardCustomer: createdSale.voucher.identityCardCustomer,
             paymentLocationId: createdSale.voucher.paymentLocationId,
-            paymentTypeId,
+            paymentTypeId: validation.paymentTypeId,
             paymentTypeState: createdSale.voucher.paymentTypeState,
             depositDate: createdSale.voucher.depositDate,
             total: Number(createdSale.voucher.total),
@@ -984,153 +951,6 @@ export class SalesService {
     }
   }
 
-  async getQRCode(data: GetQrCodeDto): Promise<{
-    error: boolean;
-    message: string;
-    data: {
-      saleId: number;
-      voucherId: number;
-      bcbQrId: string | null;
-      qrImage: string | null;
-      qrResponse: Record<string, unknown> | null;
-    } | null;
-  }> {
-    try {
-      const saleId = Number(data.saleId);
-
-      if (!Number.isInteger(saleId) || saleId <= 0) {
-        return {
-          error: true,
-          message: 'El id de la venta debe ser un número entero mayor a cero',
-          data: null,
-        };
-      }
-
-      const sale = await this.salesRepository.findOne({
-        where: { id: saleId },
-        relations: [
-          'vouchers',
-          'vouchers.paymentType',
-          'vouchers.qrPayment',
-          'saleProducts',
-          'saleProducts.product',
-        ],
-      });
-
-      if (!sale) {
-        return {
-          error: true,
-          message: `La venta con id ${saleId} no existe`,
-          data: null,
-        };
-      }
-
-      const voucher = sale.vouchers?.[0] ?? null;
-
-      if (!voucher) {
-        return {
-          error: true,
-          message: `La venta con id ${saleId} no tiene voucher asociado`,
-          data: null,
-        };
-      }
-
-      if (!this.isQrPaymentType(voucher.paymentType)) {
-        return {
-          error: true,
-          message: 'La venta no fue creada con tipo de pago QR',
-          data: null,
-        };
-      }
-
-      if (voucher.qrPayment) {
-        return {
-          error: false,
-          message: 'QR obtenido correctamente',
-          data: {
-            saleId: sale.id,
-            voucherId: voucher.id,
-            bcbQrId: voucher.qrPayment.bcbQrId,
-            qrImage: voucher.qrPayment.qrImage,
-            qrResponse: voucher.qrPayment.qrResponse,
-          },
-        };
-      }
-
-      const qrDataErrors = this.validateBcbQrData(data.qrData);
-
-      if (qrDataErrors.length > 0) {
-        return {
-          error: true,
-          message: `Datos QR incompletos: ${qrDataErrors.join(', ')}`,
-          data: null,
-        };
-      }
-
-      const personResult = await this.personDetails(sale.personUuid);
-
-      if (personResult.error || !personResult.data) {
-        return {
-          error: true,
-          message: personResult.error
-            ? personResult.message
-            : 'No se encontró la persona seleccionada.',
-          data: null,
-        };
-      }
-
-      const normalizedProducts: NormalizedSaleProductDto[] = (
-        sale.saleProducts ?? []
-      ).map((saleProduct) => ({
-        productId: saleProduct.product?.id ?? saleProduct.id,
-        name: saleProduct.name,
-        code: saleProduct.product?.code ?? '',
-        price: Number(saleProduct.price),
-        amount: saleProduct.amount,
-        total: Number(saleProduct.total),
-      }));
-
-      const generatedQr = await this.generateBcbQr(
-        this.buildBcbQrPayload(
-          data.qrData,
-          sale,
-          Number(voucher.total),
-          normalizedProducts,
-          personResult.data,
-        ),
-      );
-
-      const qrPayment = await this.qrPaymentsRepository.save(
-        this.qrPaymentsRepository.create({
-          voucher,
-          bcbQrId: String(generatedQr.datos.idQr),
-          qrImage: String(generatedQr.datos.imagenQr),
-          qrResponse: generatedQr,
-          qrStatusResponse: null,
-        }),
-      );
-
-      return {
-        error: false,
-        message: 'QR generado correctamente',
-        data: {
-          saleId: sale.id,
-          voucherId: voucher.id,
-          bcbQrId: qrPayment.bcbQrId,
-          qrImage: qrPayment.qrImage,
-          qrResponse: qrPayment.qrResponse,
-        },
-      };
-    } catch (error) {
-      this.logger.error(`Error en getQRCode: ${error.message}`, error.stack);
-      return {
-        error: true,
-        message: error.message ?? 'Error al generar el QR',
-        data: null,
-      };
-    }
-  }
-
   async getQRCodeStatus(data: GetQrCodeStatusDto): Promise<{
     error: boolean;
     message: string;
@@ -1157,23 +977,7 @@ export class SalesService {
         };
       }
 
-      const response = await this.nats.firstValue('bcb.qrStatus', { qrId });
-
-      if (!response?.serviceStatus) {
-        return {
-          error: true,
-          message: 'Servicio BCB no disponible para consultar el estado del QR',
-          data: null,
-        };
-      }
-
-      if (response?.finalizado === false) {
-        return {
-          error: true,
-          message: response?.mensaje ?? 'BCB no finalizó la consulta del QR',
-          data: null,
-        };
-      }
+      const response = await this.getBcbQrStatus(qrId);
 
       let savedQrPayment = qrPayment;
       let savedVoucher = qrPayment?.voucher ?? null;
@@ -1346,6 +1150,417 @@ export class SalesService {
     return paymentType?.shortened?.toUpperCase() === 'QR';
   }
 
+  private mapInputSaleProducts(saleProducts: CreateSaleDto['saleProducts']): {
+    productId: number;
+    name: string;
+    code: string;
+    price: string;
+    amount: number;
+  }[] {
+    return saleProducts.map((saleProduct) => ({
+      productId: Number(saleProduct.productId ?? saleProduct.id),
+      name: saleProduct.name,
+      code: saleProduct.code,
+      price: saleProduct.price,
+      amount: saleProduct.amount,
+    }));
+  }
+
+  private async validateSaleInput(
+    data: CreateSaleDto | GenerarQrDto,
+  ): Promise<any> {
+    const personUuid = data.personUuid?.trim();
+    const paymentTypeId = Number(data.paymentTypeId);
+    const parameterId = Number(data.parameterId);
+
+    const normalizedProducts: NormalizedSaleProductDto[] =
+      data.saleProducts.map((item) => {
+        const productId = Number(item?.productId ?? item?.id);
+        const amount = Number(item?.amount);
+        const price = Number(item?.price);
+
+        return {
+          productId,
+          name: item.name.trim(),
+          code: item.code.trim(),
+          price,
+          amount,
+          total: Number((price * amount).toFixed(2)),
+        };
+      });
+
+    const productIds = normalizedProducts.map((item) => item.productId);
+
+    const invalidProduct = normalizedProducts.find(
+      (item) => !Number.isInteger(item.productId) || item.productId <= 0,
+    );
+
+    if (invalidProduct) {
+      return {
+        error: true,
+        message: 'Cada producto debe enviar productId válido.',
+        data: null,
+      };
+    }
+
+    if (new Set(productIds).size !== productIds.length) {
+      return {
+        error: true,
+        message: 'Hay un producto repetido en la venta. Revise la selección.',
+        data: null,
+      };
+    }
+
+    const [parameter, paymentType, products, personResult] = await Promise.all([
+      this.parameterRepository.findOne({
+        where: { id: parameterId, isActive: true },
+      }),
+      this.paymentTypesRepository.findOne({
+        where: { id: paymentTypeId },
+      }),
+      this.productsRepository.find({
+        where: { id: In(productIds), isActive: true },
+        relations: ['group'],
+      }),
+      this.personDetails(personUuid),
+    ]);
+
+    if (!parameter) {
+      return {
+        error: true,
+        message: 'No se encontró la configuración activa para crear la venta.',
+        data: null,
+      };
+    }
+
+    if (normalizedProducts.length > parameter.maxProducts) {
+      return {
+        error: true,
+        message: `Solo puede seleccionar hasta ${parameter.maxProducts} producto(s) por venta.`,
+        data: null,
+      };
+    }
+
+    const productOverAmountLimit = normalizedProducts.find(
+      (item) =>
+        parameter.maxAmountProduct > 0 &&
+        item.amount > parameter.maxAmountProduct,
+    );
+
+    if (productOverAmountLimit) {
+      return {
+        error: true,
+        message: `El producto "${productOverAmountLimit.name}" solo permite una cantidad máxima de ${parameter.maxAmountProduct}.`,
+        data: null,
+      };
+    }
+
+    if (!paymentType) {
+      return {
+        error: true,
+        message: 'Seleccione un tipo de pago válido.',
+        data: null,
+      };
+    }
+
+    if (products.length !== productIds.length) {
+      const existingProductIds = new Set(products.map((product) => product.id));
+      const missingProductIds = productIds.filter(
+        (productId) => !existingProductIds.has(productId),
+      );
+
+      return {
+        error: true,
+        message:
+          missingProductIds.length === 1
+            ? 'Uno de los productos seleccionados ya no está disponible.'
+            : 'Algunos productos seleccionados ya no están disponibles.',
+        data: null,
+      };
+    }
+
+    const productsById = new Map(
+      products.map((product) => [product.id, product]),
+    );
+
+    for (const item of normalizedProducts) {
+      const product = productsById.get(item.productId);
+      const currentPrice = Number(product.price);
+
+      if (product.code !== item.code) {
+        return {
+          error: true,
+          message: `El producto "${item.name}" fue actualizado. Vuelva a seleccionarlo.`,
+          data: null,
+        };
+      }
+
+      if (!Number.isFinite(currentPrice) || currentPrice !== item.price) {
+        return {
+          error: true,
+          message: `El precio de "${item.name}" cambió. Vuelva a seleccionarlo.`,
+          data: null,
+        };
+      }
+    }
+
+    if (personResult.error || !personResult.data) {
+      return {
+        error: true,
+        message: personResult.error
+          ? personResult.message
+          : 'No se encontró la persona seleccionada.',
+        data: null,
+      };
+    }
+
+    const saleTotal = normalizedProducts.reduce(
+      (total, item) => total + item.total,
+      0,
+    );
+
+    if (!Number.isFinite(saleTotal) || saleTotal > 99_999_999.99) {
+      return {
+        error: true,
+        message: 'El monto total de la venta supera el límite permitido.',
+        data: null,
+      };
+    }
+
+    return {
+      error: false,
+      personUuid,
+      paymentTypeId,
+      parameterId,
+      normalizedProducts,
+      parameter,
+      paymentType,
+      products,
+      productsById,
+      person: personResult.data,
+      saleTotal: Number(saleTotal.toFixed(2)),
+    };
+  }
+
+  private async buildQrDataFromGlobalAccount(
+    products: Product[],
+    saleTotal: number,
+    saleProducts: NormalizedSaleProductDto[],
+  ): Promise<
+    BcbQrDataDto & {
+      destinationAccount: string;
+      accountNumber: string;
+      ctaDestino: string;
+      fechaVencimientoQR: string;
+    }
+  > {
+    const accountIds = [
+      ...new Set(
+        products
+          .map((product) => product.group?.accountId)
+          .filter((accountId) => Number.isInteger(Number(accountId))),
+      ),
+    ];
+
+    if (accountIds.length !== 1) {
+      throw new Error(
+        'No se puede determinar una única cuenta destino para generar el QR.',
+      );
+    }
+
+    const response = await this.nats.firstValue('global.accountsAllData', {});
+
+    if (response?.error) {
+      throw new Error(
+        response?.message ?? 'No se pudieron obtener las cuentas destino.',
+      );
+    }
+
+    const accounts = Array.isArray(response?.data) ? response.data : [];
+    const account = accounts.find((item: any) => item?.id === accountIds[0]);
+
+    if (!account) {
+      throw new Error('No se encontró la cuenta destino para generar el QR.');
+    }
+
+    const eif = String(account.financialEntity?.eif ?? '').trim();
+    const accountNumber = this.normalizeBcbAccountNumber(account.accountNumber);
+
+    if (!eif) {
+      throw new Error(
+        'La entidad financiera de la cuenta destino no tiene EIF configurado.',
+      );
+    }
+
+    const bcbAccount = await this.resolveBcbDestinationAccount(
+      account,
+      eif,
+      accountNumber,
+    );
+    const cuentaDestino = bcbAccount.cuentaDestino;
+    const titularDestinatario =
+      bcbAccount.titularDestinatario || String(account.name ?? '').trim();
+    const ciNitDestinatario =
+      bcbAccount.ciNitDestinatario || String(account.ciNitTitular ?? '').trim();
+    const fechaVencimiento = this.formatBcbDate(
+      this.buildDefaultQrExpiration(),
+    );
+
+    return {
+      destinationAccount: String(account.name ?? '').trim(),
+      accountNumber: String(account.accountNumber ?? '').trim(),
+      ctaDestino: cuentaDestino,
+      fechaVencimientoQR: fechaVencimiento,
+      titularDestinatario,
+      ciNitDestinatario,
+      eif,
+      cuentaDestino,
+      cuentaDestinoDistribucion: {
+        [cuentaDestino]: Number(Number(saleTotal).toFixed(2)),
+      },
+      codMoneda: 'BOB',
+      glosa: `Venta QR ${saleProducts.map((product) => product.code).join(',')}`,
+      fechaVencimiento,
+      unicoUso: true,
+      codigoServicio: '0',
+      metaData: {
+        origen: 'sales-service',
+        tipo: 'venta-qr',
+      },
+    };
+  }
+
+  private async resolveBcbDestinationAccount(
+    account: any,
+    eif: string,
+    accountNumber: string,
+  ): Promise<{
+    cuentaDestino: string;
+    titularDestinatario: string;
+    ciNitDestinatario: string;
+  }> {
+    const localCta = this.normalizeBcbAccountNumber(account.cta);
+
+    if (localCta && localCta !== '0') {
+      return {
+        cuentaDestino: localCta,
+        titularDestinatario: String(account.name ?? '').trim(),
+        ciNitDestinatario: String(account.ciNitTitular ?? '').trim(),
+      };
+    }
+
+    const response = await this.nats.firstValue('bcb.entities', {});
+
+    if (!response?.serviceStatus || response?.finalizado === false) {
+      throw new Error(
+        response?.message ??
+          response?.mensaje ??
+          'No se pudieron consultar las cuentas BCB de la entidad.',
+      );
+    }
+
+    const bcbAccounts = Array.isArray(response?.datos?.cuentas)
+      ? response.datos.cuentas
+      : [];
+    const bcbAccount = bcbAccounts.find(
+      (item: any) =>
+        String(item?.eif ?? '').trim() === eif &&
+        this.normalizeBcbAccountNumber(item?.eifCuenta) === accountNumber,
+    );
+    const cuentaDestino = this.normalizeBcbAccountNumber(bcbAccount?.cta);
+
+    if (!cuentaDestino || cuentaDestino === '0') {
+      throw new Error(
+        `La cuenta ${account.accountNumber} no tiene cta BCB activa. Registre o sincronice la cuenta antes de generar QR.`,
+      );
+    }
+
+    return {
+      cuentaDestino,
+      titularDestinatario: String(
+        bcbAccount?.nombreTitular ?? account.name ?? '',
+      ).trim(),
+      ciNitDestinatario: String(
+        bcbAccount?.ciNitTitular ?? account.ciNitTitular ?? '',
+      ).trim(),
+    };
+  }
+
+  private normalizeBcbAccountNumber(value: unknown): string {
+    return String(value ?? '')
+      .replace(/\D/g, '')
+      .trim();
+  }
+
+  private async ensureBcbQrPaid(qrId: string): Promise<{
+    qrId: string;
+    response: Record<string, unknown>;
+    processedOrder: any;
+    depositDate: Date;
+  }> {
+    const response = await this.getBcbQrStatus(qrId);
+
+    if (!response?.statusValidation?.isPaid) {
+      throw new Error('El QR todavía no fue pagado. No se creó la venta.');
+    }
+
+    const processedOrder = this.extractProcessedQrOrder(response);
+    const depositDate =
+      this.extractDepositDateFromQrStatus(response) ?? new Date();
+
+    return {
+      qrId,
+      response,
+      processedOrder,
+      depositDate,
+    };
+  }
+
+  private async getBcbQrStatus(qrId: string): Promise<any> {
+    const response = await this.nats.firstValue('bcb.qrStatus', { qrId });
+
+    if (!response?.serviceStatus) {
+      throw new Error(
+        'Servicio BCB no disponible para consultar el estado del QR',
+      );
+    }
+
+    if (response?.finalizado === false) {
+      throw new Error(
+        response?.mensaje ?? 'BCB no finalizó la consulta del QR',
+      );
+    }
+
+    return response;
+  }
+
+  private parseOptionalDate(value?: string): Date | null {
+    if (!value) {
+      return null;
+    }
+
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  private buildDefaultQrExpiration(): Date {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    date.setHours(23, 59, 0, 0);
+
+    return date;
+  }
+
+  private formatBcbDate(date: Date): string {
+    const pad = (value: number) => String(value).padStart(2, '0');
+
+    return [
+      `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+      `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+    ].join(' ');
+  }
+
   private validateBcbQrData(qrData?: BcbQrDataDto): string[] {
     if (!qrData) {
       return ['qrData'];
@@ -1379,7 +1594,9 @@ export class SalesService {
 
   private buildBcbQrPayload(
     qrData: BcbQrDataDto,
-    sale: Sale,
+    sale:
+      | Pick<Sale, 'id' | 'personUuid'>
+      | { id?: number | null; personUuid: string },
     saleTotal: number,
     saleProducts: NormalizedSaleProductDto[],
     person: PersonForCreatingSaleDataDto,
@@ -1402,7 +1619,8 @@ export class SalesService {
         : {}),
       codMoneda: qrData.codMoneda.trim(),
       importe,
-      glosa: qrData.glosa?.trim() || `Venta ${sale.id}`,
+      glosa:
+        qrData.glosa?.trim() || (sale.id ? `Venta ${sale.id}` : 'Venta QR'),
       fechaVencimiento: qrData.fechaVencimiento.trim(),
       unicoUso: qrData.unicoUso,
       codigoServicio: qrData.codigoServicio.trim(),
@@ -1412,13 +1630,15 @@ export class SalesService {
 
   private buildBcbQrMetaData(
     input: Record<string, unknown> | undefined,
-    sale: Sale,
+    sale:
+      | Pick<Sale, 'id' | 'personUuid'>
+      | { id?: number | null; personUuid: string },
     saleProducts: NormalizedSaleProductDto[],
     person: PersonForCreatingSaleDataDto,
   ): Record<string, string> {
     const metadata: Record<string, unknown> = {
       ...(input ?? {}),
-      saleId: sale.id,
+      ...(sale.id ? { saleId: sale.id } : {}),
       personUuid: sale.personUuid,
       fullName: person.fullName,
       identityCard: person.identityCard,
@@ -1502,12 +1722,7 @@ export class SalesService {
   }
 
   private extractDepositDateFromQrStatus(response: any): Date | null {
-    const orders = Array.isArray(response?.datos?.ordenes)
-      ? response.datos.ordenes
-      : [];
-    const processedOrder = orders.find(
-      (order: any) => order?.estado === 'PROCESADO' && order?.fecha,
-    );
+    const processedOrder = this.extractProcessedQrOrder(response);
 
     if (!processedOrder?.fecha) {
       return null;
@@ -1516,6 +1731,14 @@ export class SalesService {
     const depositDate = new Date(processedOrder.fecha);
 
     return Number.isNaN(depositDate.getTime()) ? null : depositDate;
+  }
+
+  private extractProcessedQrOrder(response: any): any | null {
+    const orders = Array.isArray(response?.datos?.ordenes)
+      ? response.datos.ordenes
+      : [];
+
+    return orders.find((order: any) => order?.estado === 'PROCESADO') ?? null;
   }
 
   private formatBoliviaDateParts(date: Date): {
