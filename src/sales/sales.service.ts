@@ -321,7 +321,7 @@ export class SalesService {
   }> {
     try {
       const { serviceStatus, error, message, data } =
-        await this.nats.firstValue('global.financialEntities', {});
+        await this.nats.firstValue('financialEntities.findAllForSales', {});
 
       if (!serviceStatus) {
         return {
@@ -639,24 +639,13 @@ export class SalesService {
     data: {
       personUuid: string;
       paymentTypeId: number;
-      parameterId: number;
+      destinationAccount: string;
+      accountNumber: string;
+      ctaDestino: string;
+      fechaVencimientoQR: string;
+      bcbQrId: string;
       total: number;
-      person: PersonForCreatingSaleDataDto;
-      saleProducts: {
-        productId: number;
-        name: string;
-        code: string;
-        price: string;
-        amount: number;
-      }[];
-      qrPayment: {
-        destinationAccount: string;
-        accountNumber: string;
-        ctaDestino: string;
-        fechaVencimientoQR: string;
-        bcbQrId: string;
-        qrImage: string;
-      };
+      qrImage: string;
     } | null;
   }> {
     try {
@@ -705,18 +694,13 @@ export class SalesService {
         data: {
           personUuid: validation.personUuid,
           paymentTypeId: validation.paymentTypeId,
-          parameterId: validation.parameterId,
+          destinationAccount: qrData.destinationAccount,
+          accountNumber: qrData.accountNumber,
+          ctaDestino: qrData.ctaDestino,
+          fechaVencimientoQR: qrData.fechaVencimientoQR,
+          bcbQrId: String(generatedQr.datos.idQr),
           total: validation.saleTotal,
-          person: validation.person,
-          saleProducts: this.mapInputSaleProducts(data.saleProducts),
-          qrPayment: {
-            destinationAccount: qrData.destinationAccount,
-            accountNumber: qrData.accountNumber,
-            ctaDestino: qrData.ctaDestino,
-            fechaVencimientoQR: qrData.fechaVencimientoQR,
-            bcbQrId: String(generatedQr.datos.idQr),
-            qrImage: String(generatedQr.datos.imagenQr),
-          },
+          qrImage: String(generatedQr.datos.imagenQr),
         },
       };
     } catch (error) {
