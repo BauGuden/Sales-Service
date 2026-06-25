@@ -321,7 +321,7 @@ export class SalesService {
   }> {
     try {
       const { serviceStatus, error, message, data } =
-        await this.nats.firstValue('global.financialEntities', {});
+        await this.nats.firstValue('financialEntities.findAllForSales', {});
 
       if (!serviceStatus) {
         return {
