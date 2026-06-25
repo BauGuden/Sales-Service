@@ -1,6 +1,6 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-import { CreateSaleDto, GenerarQrDto, GetQrCodeStatusDto } from './dto';
+import { CreateSaleDto, GenerateQrDto, GetQrCodeStatusDto } from './dto';
 import { SalesService } from './sales.service';
 
 @Controller()
@@ -50,9 +50,9 @@ export class SalesController {
     return this.salesService.forCreatingSale(personUuid);
   }
 
-  @MessagePattern('sales.generarQR')
-  async generarQR(@Payload() data: GenerarQrDto) {
-    return this.salesService.generarQR(data);
+  @MessagePattern('sales.generateQr')
+  async generateQr(@Payload() data: GenerateQrDto) {
+    return this.salesService.generateQr(data);
   }
 
   @MessagePattern('sales.createSale')
