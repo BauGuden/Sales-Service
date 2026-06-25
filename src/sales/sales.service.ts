@@ -19,7 +19,7 @@ import {
   AccountLookupDataDto,
   BcbQrDataDto,
   CreateSaleDto,
-  GenerarQrDto,
+  GenerateQrDto,
   GetQrCodeStatusDto,
   FinancialEntitiesDto,
   GroupDataDto,
@@ -633,7 +633,7 @@ export class SalesService {
     }
   }
 
-  async generarQR(data: GenerarQrDto): Promise<{
+  async generateQr(data: GenerateQrDto): Promise<{
     error: boolean;
     message: string;
     data: {
@@ -720,7 +720,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logger.error(`Error en generarQR: ${error.message}`, error.stack);
+      this.logger.error(`Error en generateQr: ${error.message}`, error.stack);
       return {
         error: true,
         message: error.message ?? 'Error al generar el QR',
@@ -1167,7 +1167,7 @@ export class SalesService {
   }
 
   private async validateSaleInput(
-    data: CreateSaleDto | GenerarQrDto,
+    data: CreateSaleDto | GenerateQrDto,
   ): Promise<any> {
     const personUuid = data.personUuid?.trim();
     const paymentTypeId = Number(data.paymentTypeId);

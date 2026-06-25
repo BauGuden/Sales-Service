@@ -11,7 +11,7 @@ import {
 } from 'class-validator';
 import { CreateSaleProductDto } from './create-sale.dto';
 
-export class GenerarQrDto {
+export class GenerateQrDto {
   @IsUUID()
   personUuid: string;
 
