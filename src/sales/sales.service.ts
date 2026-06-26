@@ -1403,7 +1403,9 @@ export class SalesService {
         [cuentaDestino]: Number(Number(saleTotal).toFixed(2)),
       },
       codMoneda: 'BOB',
-      glosa: `Venta QR ${saleProducts.map((product) => product.code).join(',')}`,
+      glosa: this.normalizeBcbText(
+        `Venta QR ${saleProducts.map((product) => product.name).join(',')}`,
+      ),
       fechaVencimiento,
       unicoUso: true,
       codigoServicio: '0',
@@ -1473,6 +1475,15 @@ export class SalesService {
   private normalizeBcbAccountNumber(value: unknown): string {
     return String(value ?? '')
       .replace(/\D/g, '')
+      .trim();
+  }
+
+  private normalizeBcbText(value: unknown): string {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\x20-\x7E]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
   }
 
@@ -1603,8 +1614,9 @@ export class SalesService {
         : {}),
       codMoneda: qrData.codMoneda.trim(),
       importe,
-      glosa:
+      glosa: this.normalizeBcbText(
         qrData.glosa?.trim() || (sale.id ? `Venta ${sale.id}` : 'Venta QR'),
+      ),
       fechaVencimiento: qrData.fechaVencimiento.trim(),
       unicoUso: qrData.unicoUso,
       codigoServicio: qrData.codigoServicio.trim(),
