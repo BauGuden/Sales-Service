@@ -10,7 +10,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Group } from './group.entity';
-import { SaleProduct } from './sale-detail.entity';
+import { SaleProduct } from './sale-products';
 
 @Entity('products')
 export class Product {

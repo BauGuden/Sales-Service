@@ -65,6 +65,11 @@ export class SalesController {
     return this.salesService.getQRCodeStatus(data);
   }
 
+  @MessagePattern('sales.bcbPaymentNotification')
+  async processBcbPaymentNotification(@Payload() data: any) {
+    return this.salesService.processBcbPaymentNotification(data);
+  }
+
   @MessagePattern('sales.list')
   async listSales() {
     return this.salesService.listSales();
