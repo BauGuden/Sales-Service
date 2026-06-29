@@ -115,9 +115,9 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
       );
     }
 
-    if (await queryRunner.hasTable(`${this.schema}.qr_payments`)) {
+    if (await queryRunner.hasTable(`${this.schema}.qr_payments_sales`)) {
       await queryRunner.dropTable(
-        `${this.schema}.qr_payments`,
+        `${this.schema}.qr_payments_sales`,
         true,
         true,
         true,
@@ -659,14 +659,14 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
   }
 
   private async createQrPaymentsTable(queryRunner: QueryRunner): Promise<void> {
-    if (await queryRunner.hasTable(`${this.schema}.qr_payments`)) {
+    if (await queryRunner.hasTable(`${this.schema}.qr_payments_sales`)) {
       return;
     }
 
     await queryRunner.createTable(
       new Table({
         schema: this.schema,
-        name: 'qr_payments',
+        name: 'qr_payments_sales',
         columns: [
           {
             name: 'id',
@@ -676,13 +676,12 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             generationStrategy: 'increment',
           },
           {
-            name: 'voucher_id',
-            type: 'int',
+            name: 'person_uuid',
+            type: 'uuid',
             isNullable: false,
-            isUnique: true,
           },
           {
-            name: 'bcb_qr_id',
+            name: 'qr_id',
             type: 'varchar',
             length: '50',
             isNullable: false,
@@ -694,14 +693,21 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             isNullable: false,
           },
           {
-            name: 'qr_response',
+            name: 'data_response',
             type: 'jsonb',
             isNullable: false,
           },
           {
-            name: 'qr_status_response',
-            type: 'jsonb',
-            isNullable: true,
+            name: 'qr_status',
+            type: 'varchar',
+            length: '20',
+            default: "'PENDIENTE'",
+            isNullable: false,
+          },
+          {
+            name: 'expiration_date_qr',
+            type: 'timestamptz',
+            isNullable: false,
           },
           {
             name: 'created_at',
@@ -724,16 +730,9 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
       }),
     );
 
-    await queryRunner.createForeignKey(
-      `${this.schema}.qr_payments`,
-      new TableForeignKey({
-        columnNames: ['voucher_id'],
-        referencedSchema: this.schema,
-        referencedTableName: 'vouchers',
-        referencedColumnNames: ['id'],
-        onDelete: 'CASCADE',
-        onUpdate: 'NO ACTION',
-      }),
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS "IDX_qr_payments_sales_person_uuid_expiration_date_qr"
+       ON "${this.schema}"."qr_payments_sales" ("person_uuid", "expiration_date_qr")`,
     );
   }
 

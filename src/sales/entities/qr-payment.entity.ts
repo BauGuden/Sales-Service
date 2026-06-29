@@ -3,36 +3,44 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
-  JoinColumn,
-  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Voucher } from './voucher.entity';
 
-@Entity('qr_payments')
+export enum QrPaymentStatus {
+  PENDIENTE = 'PENDIENTE',
+  PAGADO = 'PAGADO',
+  RECHAZADO = 'RECHAZADO',
+  EXPIRADO = 'EXPIRADO',
+}
+
+@Entity('qr_payments_sales')
 export class QrPayment {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @OneToOne(() => Voucher, (voucher) => voucher.qrPayment, {
-    nullable: false,
-    onDelete: 'CASCADE',
-  })
-  @JoinColumn({ name: 'voucher_id' })
-  voucher: Voucher;
+  @Column({ name: 'person_uuid', type: 'uuid' })
+  personUuid: string;
 
-  @Column({ name: 'bcb_qr_id', length: 50 })
-  bcbQrId: string;
+  @Column({ name: 'qr_id', length: 50 })
+  qrId: string;
 
   @Column({ name: 'qr_image', type: 'text' })
   qrImage: string;
 
-  @Column({ name: 'qr_response', type: 'jsonb' })
-  qrResponse: Record<string, unknown>;
+  @Column({ name: 'data_response', type: 'jsonb' })
+  dataResponse: Record<string, unknown>;
 
-  @Column({ name: '', type: 'jsonb', nullable: true })
-  qrStatusResponse: Record<string, unknown> | null;
+  @Column({
+    name: 'qr_status',
+    type: 'varchar',
+    length: 20,
+    default: QrPaymentStatus.PENDIENTE,
+  })
+  qrStatus: QrPaymentStatus;
+
+  @Column({ name: 'expiration_date_qr', type: 'timestamptz' })
+  expirationDateQr: Date;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
