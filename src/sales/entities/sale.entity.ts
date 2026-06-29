@@ -16,7 +16,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Parameter } from './parameter.entity';
-import { SaleProduct } from './sale-detail.entity';
+import { SaleProduct } from './sale-products';
 import { Voucher } from './voucher.entity';
 
 @Entity('sales')

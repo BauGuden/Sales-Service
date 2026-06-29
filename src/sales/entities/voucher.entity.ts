@@ -11,12 +11,10 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { PaymentType } from './payment-type.entity';
-import { QrPayment } from './qr-payment.entity';
 import { Sale } from './sale.entity';
 
 @Entity('vouchers')
@@ -57,9 +55,6 @@ export class Voucher {
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   total: number;
-
-  @OneToOne(() => QrPayment, (qrPayment) => qrPayment.voucher)
-  qrPayment: QrPayment | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
