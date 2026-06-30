@@ -13,7 +13,7 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { CreateSaleProductDto } from './create-sale.dto';
+import { SaleProductDto } from './create-sale.dto';
 
 export class BcbQrDataDto {
   @IsString()
@@ -83,8 +83,8 @@ export class GenerateQrDto {
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => CreateSaleProductDto)
-  saleProducts: CreateSaleProductDto[];
+  @Type(() => SaleProductDto)
+  saleProducts: SaleProductDto[];
 }
 
 export class GetQrCodeStatusDto {

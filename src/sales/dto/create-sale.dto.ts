@@ -13,7 +13,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export class CreateSaleProductDto {
+export class SaleProductDto {
   @IsInt()
   @IsPositive()
   productId: number;
@@ -36,7 +36,7 @@ export class CreateSaleProductDto {
   amount: number;
 }
 
-export class CreateSaleVoucherDto {
+export class saleVoucherDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
@@ -61,19 +61,19 @@ export class CreateSaleDto {
 
   @IsInt()
   @IsPositive()
-  paymentTypeId: number;
+  parameterId: number;
 
   @IsInt()
   @IsPositive()
-  parameterId: number;
+  paymentTypeId: number;
 
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => CreateSaleProductDto)
-  saleProducts: CreateSaleProductDto[];
+  @Type(() => SaleProductDto)
+  saleProducts: SaleProductDto[];
 
   @ValidateNested()
-  @Type(() => CreateSaleVoucherDto)
-  voucher: CreateSaleVoucherDto;
+  @Type(() => saleVoucherDto)
+  voucher:saleVoucherDto;
 }
