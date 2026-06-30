@@ -8,7 +8,7 @@ import {
   PaymentType,
   PaymentTypeState,
   Product,
-  QrPayment,
+  QrPaymentSale,
   QrPaymentStatus,
   Sale,
   SaleProduct,
@@ -49,8 +49,8 @@ export class SalesService {
     private readonly parameterRepository: Repository<Parameter>,
     @InjectRepository(Sale)
     private readonly salesRepository: Repository<Sale>,
-    @InjectRepository(QrPayment)
-    private readonly qrPaymentsRepository: Repository<QrPayment>,
+    @InjectRepository(QrPaymentSale)
+    private readonly qrPaymentsRepository: Repository<QrPaymentSale>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -782,13 +782,13 @@ export class SalesService {
       depositDate: Date | null;
     };
     transactionId?: string | null;
-    qrPayment?: QrPayment | null;
+    qrPayment?: QrPaymentSale | null;
     qrPaymentDataResponse?: Record<string, unknown>;
   }): Promise<{
     sale: Sale;
     saleProducts: SaleProduct[];
     voucher: Voucher;
-    qrPayment: QrPayment | null;
+    qrPayment: QrPaymentSale | null;
   }> {
     const {
       data,
@@ -837,7 +837,7 @@ export class SalesService {
         }),
       );
 
-      let savedQrPayment: QrPayment | null = null;
+      let savedQrPayment: QrPaymentSale | null = null;
 
       if (qrPayment) {
         qrPayment.qrStatus = QrPaymentStatus.PAGADO;
@@ -845,7 +845,7 @@ export class SalesService {
           ...(qrPaymentDataResponse ?? qrPayment.dataResponse),
           createdSaleId: sale.id,
         };
-        savedQrPayment = await manager.save(QrPayment, qrPayment);
+        savedQrPayment = await manager.save(QrPaymentSale, qrPayment);
       }
 
       return {
@@ -864,7 +864,7 @@ export class SalesService {
       sale: Sale;
       saleProducts: SaleProduct[];
       voucher: Voucher;
-      qrPayment: QrPayment | null;
+      qrPayment: QrPaymentSale | null;
     },
   ) {
     return {
@@ -1294,7 +1294,7 @@ export class SalesService {
   }
 
   private mergeQrPaymentDataResponse(
-    qrPayment: QrPayment,
+    qrPayment: QrPaymentSale,
     data: Record<string, unknown>,
   ): Record<string, unknown> {
     const currentData =
@@ -1309,7 +1309,7 @@ export class SalesService {
   }
 
   private buildSalePayloadFromQrPayment(
-    qrPayment: QrPayment,
+    qrPayment: QrPaymentSale,
   ): GenerateQrDto | null {
     const storedData =
       qrPayment.dataResponse && typeof qrPayment.dataResponse === 'object'
@@ -1757,7 +1757,7 @@ export class SalesService {
 
   private resolveQrPaymentStatus(
     response: any,
-    qrPayment?: QrPayment | null,
+    qrPayment?: QrPaymentSale | null,
   ): QrPaymentStatus {
     if (response?.statusValidation?.isPaid) {
       return QrPaymentStatus.PAGADO;

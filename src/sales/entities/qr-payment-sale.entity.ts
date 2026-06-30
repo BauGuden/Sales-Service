@@ -15,7 +15,7 @@ export enum QrPaymentStatus {
 }
 
 @Entity('qr_payments_sales')
-export class QrPayment {
+export class QrPaymentSale {
   @PrimaryGeneratedColumn()
   id: number;
 
