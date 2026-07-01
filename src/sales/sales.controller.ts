@@ -69,9 +69,4 @@ export class SalesController {
   async processBcbPaymentNotification(@Payload() data: any) {
     return this.salesService.processBcbPaymentNotification(data);
   }
-
-  @MessagePattern('sales.list')
-  async listSales() {
-    return this.salesService.listSales();
-  }
 }

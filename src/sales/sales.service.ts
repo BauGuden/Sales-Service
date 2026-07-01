@@ -11,7 +11,7 @@ import {
   QrPayment,
   QrPaymentStatus,
   Sale,
-  SaleProduct,
+  SaleProducts,
   SaleState,
   Voucher,
 } from './entities';
@@ -550,6 +550,71 @@ export class SalesService {
     }
   }
 
+  private async personDetailsById(personId: number): Promise<{
+    error: boolean;
+    message: string;
+    data: PersonForCreatingSaleDataDto | null;
+  }> {
+    try {
+      if (!Number.isInteger(personId) || personId <= 0) {
+        return {
+          error: true,
+          message: 'Seleccione una persona para crear la venta.',
+          data: null,
+        };
+      }
+
+      const personResponse = await this.nats.firstValue('person.findOne', {
+        term: String(personId),
+        field: 'id',
+      });
+      const person = personResponse?.data ?? personResponse;
+
+      if (!person) {
+        return {
+          error: true,
+          message: 'No se encontró la persona seleccionada.',
+          data: null,
+        };
+      }
+
+      const affiliate = person.personAffiliates?.find(
+        (item: { type?: string; typeId?: number }) =>
+          item.type === 'affiliates',
+      );
+
+      return {
+        error: false,
+        message: 'Datos de la persona obtenidos correctamente',
+        data: {
+          id: person.id,
+          uuidColumn: person.uuidColumn,
+          fullName: [
+            person.firstName,
+            person.secondName,
+            person.lastName,
+            person.mothersLastName,
+          ]
+            .filter(Boolean)
+            .join(' '),
+          identityCard: person.identityCard ?? '',
+          nup: affiliate?.typeId ?? null,
+          isPolice: Boolean(affiliate),
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error en personDetailsById: ${error.message}`,
+        error.stack,
+      );
+      return {
+        error: true,
+        message: 'No se pudo validar la persona seleccionada.',
+        data: null,
+      };
+    }
+  }
+
   async forCreatingSale(personUuid: string): Promise<{
     error: boolean;
     message: string;
@@ -638,7 +703,7 @@ export class SalesService {
     error: boolean;
     message: string;
     data: {
-      personUuid: string;
+      personId: number;
       paymentTypeId: number;
       destinationAccount: string;
       accountNumber: string;
@@ -684,7 +749,7 @@ export class SalesService {
       const generatedQr = await this.generateBcbQr(
         this.buildBcbQrPayload(
           qrData,
-          { id: null, personUuid: validation.personUuid },
+          { id: null, personId: validation.personId },
           validation.saleTotal,
           validation.normalizedProducts,
           validation.person,
@@ -698,11 +763,11 @@ export class SalesService {
 
       await this.qrPaymentsRepository.save(
         this.qrPaymentsRepository.create({
-          personUuid: validation.personUuid,
+          personId: validation.personId,
           qrId,
           qrImage,
           dataResponse: {
-            personUuid: validation.personUuid,
+            personId: validation.personId,
             paymentTypeId: validation.paymentTypeId,
             parameterId: validation.parameterId,
             saleProducts: this.mapInputSaleProducts(data.saleProducts),
@@ -716,7 +781,7 @@ export class SalesService {
         error: false,
         message: 'QR generado correctamente',
         data: {
-          personUuid: validation.personUuid,
+          personId: validation.personId,
           paymentTypeId: validation.paymentTypeId,
           destinationAccount: qrData.destinationAccount,
           accountNumber: qrData.accountNumber,
@@ -744,7 +809,7 @@ export class SalesService {
     message: string;
     data: {
       datosIngreso: {
-        personUuid: string;
+        personId: number;
         paymentTypeId: number;
         parameterId: number;
         saleProducts: {
@@ -759,7 +824,7 @@ export class SalesService {
         id: number;
         code: string | null;
         saleState: SaleState;
-        personUuid: string;
+        personId: number;
         transactionId: string | null;
         parameterId: number;
       };
@@ -854,7 +919,7 @@ export class SalesService {
     qrPaymentDataResponse?: Record<string, unknown>;
   }): Promise<{
     sale: Sale;
-    saleProducts: SaleProduct[];
+    saleProducts: SaleProducts[];
     voucher: Voucher;
     qrPayment: QrPayment | null;
   }> {
@@ -872,7 +937,7 @@ export class SalesService {
         manager.create(Sale, {
           code: null,
           saleState: SaleState.VIGENTE,
-          personUuid: validation.personUuid,
+          personId: validation.personId,
           transactionId,
           parameter: validation.parameter,
         }),
@@ -881,7 +946,7 @@ export class SalesService {
       const saleProducts = validation.normalizedProducts.map((item) => {
         const product = validation.productsById.get(item.productId);
 
-        return manager.create(SaleProduct, {
+        return manager.create(SaleProducts, {
           sale,
           product,
           name: product.name,
@@ -890,7 +955,7 @@ export class SalesService {
           total: item.total,
         });
       });
-      const savedSaleProducts = await manager.save(SaleProduct, saleProducts);
+      const savedSaleProducts = await manager.save(SaleProducts, saleProducts);
 
       const savedVoucher = await manager.save(
         manager.create(Voucher, {
@@ -930,7 +995,7 @@ export class SalesService {
     validation: any,
     createdSale: {
       sale: Sale;
-      saleProducts: SaleProduct[];
+      saleProducts: SaleProducts[];
       voucher: Voucher;
       qrPayment: QrPayment | null;
     },
@@ -940,7 +1005,7 @@ export class SalesService {
       message: 'Venta creada correctamente',
       data: {
         datosIngreso: {
-          personUuid: validation.personUuid,
+          personId: validation.personId,
           paymentTypeId: validation.paymentTypeId,
           parameterId: validation.parameterId,
           saleProducts: this.mapInputSaleProducts(data.saleProducts),
@@ -949,7 +1014,7 @@ export class SalesService {
           id: createdSale.sale.id,
           code: createdSale.sale.code,
           saleState: createdSale.sale.saleState,
-          personUuid: createdSale.sale.personUuid,
+          personId: createdSale.sale.personId,
           transactionId: createdSale.sale.transactionId,
           parameterId: validation.parameterId,
         },
@@ -1226,117 +1291,6 @@ export class SalesService {
     }
   }
 
-  async listSales(): Promise<{
-    error: boolean;
-    message: string;
-    data: SaleListItemDto[] | null;
-  }> {
-    try {
-      const sales = await this.salesRepository
-        .createQueryBuilder('sale')
-        .leftJoinAndSelect('sale.saleProducts', 'saleProduct')
-        .leftJoinAndSelect('saleProduct.product', 'product')
-        .leftJoinAndSelect('sale.vouchers', 'voucher')
-        .leftJoinAndSelect('voucher.paymentType', 'paymentType')
-        .select([
-          'sale.id',
-          'sale.code',
-          'sale.saleState',
-          'sale.personUuid',
-          'sale.date',
-          'saleProduct.id',
-          'saleProduct.name',
-          'saleProduct.price',
-          'saleProduct.amount',
-          'saleProduct.total',
-          'product.id',
-          'voucher.id',
-          'voucher.customer',
-          'voucher.identityCardCustomer',
-          'voucher.depositDate',
-          'voucher.total',
-          'paymentType.id',
-          'paymentType.name',
-          'paymentType.shortened',
-        ])
-        .orderBy('sale.date', 'DESC')
-        .addOrderBy('sale.id', 'DESC')
-        .addOrderBy('saleProduct.id', 'ASC')
-        .getMany();
-
-      const personUuids = [
-        ...new Set(sales.map((sale) => sale.personUuid).filter(Boolean)),
-      ];
-      const personResults = await Promise.all(
-        personUuids.map((personUuid) => this.personDetails(personUuid)),
-      );
-      const personsByUuid = new Map<string, PersonForCreatingSaleDataDto>();
-
-      for (const [index, personResult] of personResults.entries()) {
-        if (personResult.error || !personResult.data) {
-          return {
-            error: true,
-            message: personResult.error
-              ? personResult.message
-              : 'No se encontró una de las personas de las ventas.',
-            data: null,
-          };
-        }
-
-        personsByUuid.set(personUuids[index], personResult.data);
-      }
-
-      const data: SaleListItemDto[] = sales.map((sale) => {
-        const person = personsByUuid.get(sale.personUuid);
-        const voucher = sale.vouchers?.[0] ?? null;
-
-        if (!person) {
-          throw new Error('No se encontró una de las personas de las ventas.');
-        }
-
-        const saleDate = this.formatBoliviaDateParts(sale.date);
-
-        return {
-          saleId: sale.id,
-          code: sale.code,
-          saleState: sale.saleState,
-          personUuid: sale.personUuid,
-          fullName: person.fullName,
-          identityCard: person.identityCard,
-          nup: person.nup,
-          isPolice: person.isPolice,
-          hourSale: saleDate.hourSale,
-          dateSaleFormat: saleDate.dateSaleFormat,
-          products: (sale.saleProducts ?? []).map((saleProduct) => ({
-            productId: saleProduct.product.id,
-            name: saleProduct.name,
-            price: Number(saleProduct.price),
-            amount: saleProduct.amount,
-            subTotal: Number(saleProduct.total),
-          })),
-          name: voucher?.paymentType?.name ?? null,
-          shortened: voucher?.paymentType?.shortened ?? null,
-          bcbQrId: null,
-          depositDate: voucher?.depositDate ?? null,
-          total: voucher ? Number(voucher.total) : null,
-        };
-      });
-
-      return {
-        error: false,
-        message: 'Ventas obtenidas correctamente',
-        data,
-      };
-    } catch (error) {
-      this.logger.error(`Error en listSales: ${error.message}`, error.stack);
-      return {
-        error: true,
-        message: 'Error al obtener las ventas',
-        data: null,
-      };
-    }
-  }
-
   private extractQrIdFromBcbNotification(notification: any): string {
     return String(
       notification?.idQR ??
@@ -1407,7 +1361,7 @@ export class SalesService {
         ? (qrPayment.dataResponse as any)
         : null;
 
-    const personUuid = String(storedData?.personUuid ?? '').trim();
+    const personId = Number(storedData?.personId);
     const paymentTypeId = Number(storedData?.paymentTypeId);
     const parameterId = Number(storedData?.parameterId);
     const saleProducts = Array.isArray(storedData?.saleProducts)
@@ -1415,7 +1369,8 @@ export class SalesService {
       : [];
 
     if (
-      !personUuid ||
+      !Number.isInteger(personId) ||
+      personId <= 0 ||
       !Number.isInteger(paymentTypeId) ||
       paymentTypeId <= 0 ||
       !Number.isInteger(parameterId) ||
@@ -1426,7 +1381,7 @@ export class SalesService {
     }
 
     return {
-      personUuid,
+      personId,
       paymentTypeId,
       parameterId,
       saleProducts,
@@ -1468,7 +1423,7 @@ export class SalesService {
   private async validateSaleInput(
     data: CreateSaleDto | GenerateQrDto,
   ): Promise<any> {
-    const personUuid = data.personUuid?.trim();
+    const personId = Number(data.personId);
     const paymentTypeId = Number(data.paymentTypeId);
     const parameterId = Number(data.parameterId);
 
@@ -1521,7 +1476,7 @@ export class SalesService {
         where: { id: In(productIds), isActive: true },
         relations: ['group'],
       }),
-      this.personDetails(personUuid),
+      this.personDetailsById(personId),
     ]);
 
     if (!parameter) {
@@ -1628,7 +1583,7 @@ export class SalesService {
 
     return {
       error: false,
-      personUuid,
+      personId,
       paymentTypeId,
       parameterId,
       normalizedProducts,
@@ -1925,9 +1880,7 @@ export class SalesService {
 
   private buildBcbQrPayload(
     qrData: BcbQrDataDto,
-    sale:
-      | Pick<Sale, 'id' | 'personUuid'>
-      | { id?: number | null; personUuid: string },
+    sale: { id?: number | null; personId: number },
     saleTotal: number,
     saleProducts: NormalizedSaleProductDto[],
     person: PersonForCreatingSaleDataDto,
@@ -1962,16 +1915,14 @@ export class SalesService {
 
   private buildBcbQrMetaData(
     input: Record<string, unknown> | undefined,
-    sale:
-      | Pick<Sale, 'id' | 'personUuid'>
-      | { id?: number | null; personUuid: string },
+    sale: { id?: number | null; personId: number },
     saleProducts: NormalizedSaleProductDto[],
     person: PersonForCreatingSaleDataDto,
   ): Record<string, string> {
     const metadata: Record<string, unknown> = {
       ...(input ?? {}),
       ...(sale.id ? { saleId: sale.id } : {}),
-      personUuid: sale.personUuid,
+      personId: sale.personId,
       fullName: person.fullName,
       identityCard: person.identityCard,
       productCount: saleProducts.length,

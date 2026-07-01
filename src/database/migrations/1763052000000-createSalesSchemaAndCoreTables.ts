@@ -501,8 +501,8 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             isNullable: false,
           },
           {
-            name: 'person_uuid',
-            type: 'uuid',
+            name: 'person_id',
+            type: 'int',
             isNullable: false,
           },
           {
@@ -676,8 +676,8 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             generationStrategy: 'increment',
           },
           {
-            name: 'person_uuid',
-            type: 'uuid',
+            name: 'person_id',
+            type: 'int',
             isNullable: false,
           },
           {
@@ -731,8 +731,8 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
     );
 
     await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_qr_payments_sales_person_uuid_expiration_date_qr"
-       ON "${this.schema}"."qr_payments_sales" ("person_uuid", "expiration_date_qr")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_qr_payments_sales_person_id_expiration_date_qr"
+       ON "${this.schema}"."qr_payments_sales" ("person_id", "expiration_date_qr")`,
     );
   }
 

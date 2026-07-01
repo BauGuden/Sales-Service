@@ -16,7 +16,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Parameter } from './parameter.entity';
-import { SaleProduct } from './sale-products';
+import { SaleProducts } from './sale-products.entity';
 import { Voucher } from './voucher.entity';
 
 @Entity('sales')
@@ -36,8 +36,8 @@ export class Sale {
   })
   saleState: SaleState = SaleState.PENDIENTE;
 
-  @Column({ name: 'person_uuid', type: 'uuid' })
-  personUuid: string;
+  @Column({ name: 'person_id', type: 'int' })
+  personId: number;
 
   @Column({ type: 'timestamptz', default: () => 'now()' })
   date: Date;
@@ -63,8 +63,8 @@ export class Sale {
   @OneToMany(() => Voucher, (voucher) => voucher.sale)
   vouchers: Voucher[];
 
-  @OneToMany(() => SaleProduct, (saleProduct) => saleProduct.sale, {
+  @OneToMany(() => SaleProducts, (saleProducts) => saleProducts.sale, {
     cascade: true,
   })
-  saleProducts: SaleProduct[];
+  saleProducts: SaleProducts[];
 }
