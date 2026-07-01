@@ -60,7 +60,7 @@ export class SalesController {
     return this.salesService.createSale(data);
   }
 
-  @MessagePattern('sales.getQRCodeStatus')
+  @MessagePattern('sales.qrCodeStatus')
   async getQRCodeStatus(@Payload() data: GetQrCodeStatusDto) {
     return this.salesService.getQRCodeStatus(data);
   }
