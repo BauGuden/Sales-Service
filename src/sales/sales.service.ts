@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import {
   Group,
   Parameter,
@@ -933,10 +933,17 @@ export class SalesService {
     } = params;
 
     return this.dataSource.transaction(async (manager) => {
+      const saleState = SaleState.VIGENTE;
+      const code =
+        saleState === SaleState.VIGENTE &&
+        this.isManualPaymentType(validation.paymentType)
+          ? await this.generateNextSaleCode(manager)
+          : null;
+
       const sale = await manager.save(
         manager.create(Sale, {
-          code: null,
-          saleState: SaleState.VIGENTE,
+          code,
+          saleState,
           personId: validation.personId,
           transactionId,
           parameter: validation.parameter,
@@ -988,6 +995,28 @@ export class SalesService {
         qrPayment: savedQrPayment,
       };
     });
+  }
+
+  private async generateNextSaleCode(manager: EntityManager): Promise<string> {
+    const saleTablePath = manager.getRepository(Sale).metadata.tablePath;
+
+    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `${saleTablePath}:code`,
+    ]);
+
+    const result = await manager
+      .createQueryBuilder(Sale, 'sale')
+      .select('COALESCE(MAX(CAST(sale.code AS BIGINT)), 0)', 'maxCode')
+      .where("sale.code ~ '^[0-9]+$'")
+      .getRawOne<{ maxCode: string }>();
+
+    const nextCode = Number(result?.maxCode ?? 0) + 1;
+
+    if (!Number.isSafeInteger(nextCode) || nextCode > 99_999_999) {
+      throw new Error('Se alcanzó el límite de códigos de venta de 8 dígitos.');
+    }
+
+    return String(nextCode).padStart(8, '0');
   }
 
   private buildCreateSaleResponse(

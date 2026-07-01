@@ -490,7 +490,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           {
             name: 'code',
             type: 'varchar',
-            length: '20',
+            length: '8',
             isNullable: true,
             isUnique: true,
           },

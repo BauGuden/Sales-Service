@@ -24,7 +24,7 @@ export class Sale {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 20, unique: true, nullable: true })
+  @Column({ length: 8, unique: true, nullable: true })
   code: string | null;
 
   @Column({
