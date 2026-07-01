@@ -8,7 +8,7 @@ import {
   PaymentType,
   PaymentTypeState,
   Product,
-  QrPayment,
+  QrPaymentSale,
   QrPaymentStatus,
   Sale,
   SaleProduct,
@@ -49,8 +49,8 @@ export class SalesService {
     private readonly parameterRepository: Repository<Parameter>,
     @InjectRepository(Sale)
     private readonly salesRepository: Repository<Sale>,
-    @InjectRepository(QrPayment)
-    private readonly qrPaymentsRepository: Repository<QrPayment>,
+    @InjectRepository(QrPaymentSale)
+    private readonly qrPaymentsRepository: Repository<QrPaymentSale>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -80,12 +80,7 @@ export class SalesService {
         data: data ?? null,
       };
     } catch (error) {
-      this.logger.error(`Error en searchPerson: ${error.message}`, error.stack);
-      return {
-        error: true,
-        message: 'Error al comunicarse con el servicio de búsqueda de personas',
-        data: null,
-      };
+      this.logError("Error al buscar beneficiarios", error);
     }
   }
 
@@ -96,7 +91,12 @@ export class SalesService {
   }> {
     try {
       const groups = await this.groupsRepository.find({
-        select: ['id', 'name', 'shortened', 'accountId'],
+        select: {
+          id: true,
+          name: true,
+          shortened: true,
+          accountId: true,
+        },
       });
 
       if (!groups || groups.length === 0) {
@@ -150,11 +150,8 @@ export class SalesService {
               'No se pudo obtener información de las cuentas o el formato de respuesta no fue correcto.',
             );
           }
-        } catch (natsError) {
-          this.logger.error(
-            `Error al consultar cuentas vía NATS: ${natsError.message}`,
-            natsError.stack,
-          );
+        } catch (error) {
+          this.logError('Error al obtener cuentas', error);
         }
       }
 
@@ -176,16 +173,7 @@ export class SalesService {
         data: enrichedGroups,
       };
     } catch (error) {
-      this.logger.error(
-        `Error al obtener grupos: ${error.message}`,
-        error.stack,
-      );
-      return {
-        error: true,
-        message:
-          'No se pudieron obtener los grupos. Verifique la conexión o la existencia de la tabla.',
-        data: null,
-      };
+      this.logError('Error al obtener grupos', error);
     }
   }
 
@@ -207,7 +195,7 @@ export class SalesService {
 
       const group = await this.groupsRepository.findOne({
         where: { id: parsedGroupId },
-        select: ['id'],
+        select: {id: true},
       });
 
       if (!group) {
@@ -220,7 +208,12 @@ export class SalesService {
 
       const products = await this.productsRepository.find({
         where: { group: { id: parsedGroupId } },
-        select: ['id', 'name', 'code', 'price'],
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          price: true,
+        },
       });
 
       if (!products.length) {
@@ -242,16 +235,10 @@ export class SalesService {
         })),
       };
     } catch (error) {
-      this.logger.error(
-        `Error al obtener productos por grupo ${groupId}: ${error.message}`,
-        error.stack,
-      );
-      return {
-        error: true,
-        message:
-          'No se pudieron obtener los productos por grupo. Verifique la conexión o la existencia de la tabla.',
-        data: null,
-      };
+      this.logError(
+        "Error al obtener los productos de un grupo",
+        error,
+      )
     }
   }
 
@@ -263,13 +250,13 @@ export class SalesService {
     try {
       const activeParameters = await this.parameterRepository.find({
         where: { isActive: true },
-        select: [
-          'id',
-          'maxAmountProduct',
-          'maxProducts',
-          'currencySymbol',
-          'isActive',
-        ],
+        select: {
+          id: true,
+          maxAmountProduct: true,
+          maxProducts: true,
+          currencySymbol: true,
+          isActive: true,
+        },
         order: { id: 'ASC' },
         take: 2,
       });
@@ -302,16 +289,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logger.error(
-        `Error al obtener parámetros: ${error.message}`,
-        error.stack,
-      );
-      return {
-        error: true,
-        message:
-          'No se pudieron obtener los parámetros. Verifique la conexión o la existencia de la tabla.',
-        data: null,
-      };
+      this.logError('Error al obtener parámetro', error);
     }
   }
 
@@ -338,16 +316,7 @@ export class SalesService {
         data: data ?? null,
       };
     } catch (error) {
-      this.logger.error(
-        `Error en financialEntities: ${error.message}`,
-        error.stack,
-      );
-      return {
-        error: true,
-        message:
-          'Error al comunicarse con el servicio de entidades financieras',
-        data: null,
-      };
+      this.logError("Error al obtener entidades financieras", error);
     }
   }
 
@@ -358,7 +327,12 @@ export class SalesService {
   }> {
     try {
       const paymentTypes = await this.paymentTypesRepository.find({
-        select: ['id', 'name', 'description', 'shortened'],
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          shortened: true,
+        },
       });
       return {
         error: false,
@@ -366,16 +340,7 @@ export class SalesService {
         data: paymentTypes,
       };
     } catch (error) {
-      this.logger.error(
-        `Error al obtener tipos de pago: ${error.message}`,
-        error.stack,
-      );
-      return {
-        error: true,
-        message:
-          'No se pudieron obtener los tipos de pago. Verifique la conexión o la existencia de la tabla.',
-        data: null,
-      };
+      this.logError("Error al obtener tipos de pago", error);
     }
   }
 
@@ -402,12 +367,7 @@ export class SalesService {
         data: data ?? null,
       };
     } catch (error) {
-      this.logger.error(`Error en accounts: ${error.message}`, error.stack);
-      return {
-        error: true,
-        message: 'Error al comunicarse con el servicio de cuentas',
-        data: null,
-      };
+      this.logError("Error al obtener cuentas", error);
     }
   }
 
@@ -453,12 +413,10 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logger.error(`Error en dataForSale: ${error.message}`, error.stack);
-      return {
-        error: true,
-        message: 'Error al obtener datos para la venta',
-        data: null,
-      };
+      this.logError(
+        "Error al obtener datos para la venta",
+        error,
+      )
     }
   }
 
@@ -538,15 +496,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logger.error(
-        `Error en personDetails: ${error.message}`,
-        error.stack,
-      );
-      return {
-        error: true,
-        message: 'No se pudo validar la persona seleccionada.',
-        data: null,
-      };
+      this.logError("Error en personDetails", error);
     }
   }
 
@@ -622,15 +572,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logger.error(
-        `Error en forCreatingSale: ${error.message}`,
-        error.stack,
-      );
-      return {
-        error: true,
-        message: 'Error al obtener los datos de la persona para crear la venta',
-        data: null,
-      };
+      this.logError("Error al obtener datos para crear la venta", error);
     }
   }
 
@@ -730,12 +672,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logger.error(`Error en generateQr: ${error.message}`, error.stack);
-      return {
-        error: true,
-        message: error.message ?? 'Error al generar el QR',
-        data: null,
-      };
+      this.logError("Error en la generación de QR", error);
     }
   }
 
@@ -831,12 +768,7 @@ export class SalesService {
 
       return this.buildCreateSaleResponse(data, validation, createdSale);
     } catch (error) {
-      this.logger.error(`Error en createSale: ${error.message}`, error.stack);
-      return {
-        error: true,
-        message: error.message ?? 'Error al crear la venta',
-        data: null,
-      };
+      this.logError("Error en la creación de venta", error);
     }
   }
 
@@ -850,13 +782,13 @@ export class SalesService {
       depositDate: Date | null;
     };
     transactionId?: string | null;
-    qrPayment?: QrPayment | null;
+    qrPayment?: QrPaymentSale | null;
     qrPaymentDataResponse?: Record<string, unknown>;
   }): Promise<{
     sale: Sale;
     saleProducts: SaleProduct[];
     voucher: Voucher;
-    qrPayment: QrPayment | null;
+    qrPayment: QrPaymentSale | null;
   }> {
     const {
       data,
@@ -905,7 +837,7 @@ export class SalesService {
         }),
       );
 
-      let savedQrPayment: QrPayment | null = null;
+      let savedQrPayment: QrPaymentSale | null = null;
 
       if (qrPayment) {
         qrPayment.qrStatus = QrPaymentStatus.PAGADO;
@@ -913,7 +845,7 @@ export class SalesService {
           ...(qrPaymentDataResponse ?? qrPayment.dataResponse),
           createdSaleId: sale.id,
         };
-        savedQrPayment = await manager.save(QrPayment, qrPayment);
+        savedQrPayment = await manager.save(QrPaymentSale, qrPayment);
       }
 
       return {
@@ -932,7 +864,7 @@ export class SalesService {
       sale: Sale;
       saleProducts: SaleProduct[];
       voucher: Voucher;
-      qrPayment: QrPayment | null;
+      qrPayment: QrPaymentSale | null;
     },
   ) {
     return {
@@ -1008,7 +940,7 @@ export class SalesService {
         };
       }
 
-      let qrPayment = await this.qrPaymentsRepository.findOne({
+      const qrPayment = await this.qrPaymentsRepository.findOne({
         where: { qrId },
       });
       const response = await this.getBcbQrStatus(qrId);
@@ -1041,15 +973,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logger.error(
-        `Error en getQRCodeStatus: ${error.message}`,
-        error.stack,
-      );
-      return {
-        error: true,
-        message: error.message ?? 'Error al consultar el estado del QR',
-        data: null,
-      };
+      this.logError("Error al consultar el estado del QR", error);
     }
   }
 
@@ -1212,17 +1136,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logger.error(
-        `Error en processBcbPaymentNotification: ${error.message}`,
-        error.stack,
-      );
-
-      return {
-        error: true,
-        message:
-          error.message ?? 'Error al procesar la notificación de pago BCB',
-        data: null,
-      };
+      this.logError("Error al procesar notificación BCB", error);
     }
   }
 
@@ -1328,12 +1242,7 @@ export class SalesService {
         data,
       };
     } catch (error) {
-      this.logger.error(`Error en listSales: ${error.message}`, error.stack);
-      return {
-        error: true,
-        message: 'Error al obtener las ventas',
-        data: null,
-      };
+      this.logError("Error al obtener ventas", error);
     }
   }
 
@@ -1385,7 +1294,7 @@ export class SalesService {
   }
 
   private mergeQrPaymentDataResponse(
-    qrPayment: QrPayment,
+    qrPayment: QrPaymentSale,
     data: Record<string, unknown>,
   ): Record<string, unknown> {
     const currentData =
@@ -1400,7 +1309,7 @@ export class SalesService {
   }
 
   private buildSalePayloadFromQrPayment(
-    qrPayment: QrPayment,
+    qrPayment: QrPaymentSale,
   ): GenerateQrDto | null {
     const storedData =
       qrPayment.dataResponse && typeof qrPayment.dataResponse === 'object'
@@ -1519,7 +1428,9 @@ export class SalesService {
       }),
       this.productsRepository.find({
         where: { id: In(productIds), isActive: true },
-        relations: ['group'],
+        relations: {
+          group: true,
+        },
       }),
       this.personDetails(personUuid),
     ]);
@@ -1846,7 +1757,7 @@ export class SalesService {
 
   private resolveQrPaymentStatus(
     response: any,
-    qrPayment?: QrPayment | null,
+    qrPayment?: QrPaymentSale | null,
   ): QrPaymentStatus {
     if (response?.statusValidation?.isPaid) {
       return QrPaymentStatus.PAGADO;
@@ -2054,4 +1965,13 @@ export class SalesService {
       dateSaleFormat: `${day}/${month}/${year}`,
     };
   }
+
+  private logError(context: string, error: unknown): void {
+    if (error instanceof Error) {
+      this.logger.error(`${context}: ${error.message}`, error.stack);
+    } else {
+      this.logger.error(`${context}: ${String(error)}`);
+    }
+  }
+
 }
