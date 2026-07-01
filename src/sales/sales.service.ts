@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, MoreThan, Repository } from 'typeorm';
 import {
   Group,
   Parameter,
@@ -1315,6 +1315,184 @@ export class SalesService {
         error: true,
         message:
           error.message ?? 'Error al procesar la notificación de pago BCB',
+        data: null,
+      };
+    }
+  }
+
+  async salesReportByPerson(personId: number) {
+    try {
+      if (!Number.isInteger(personId) || personId <= 0) {
+        return {
+          error: true,
+          message: 'Debe enviar un personId válido.',
+          data: null,
+        };
+      }
+
+      const sales = await this.salesRepository.find({
+        where: {
+          personId,
+          saleState: SaleState.VIGENTE,
+        },
+        relations: {
+          parameter: true,
+          saleProducts: {
+            product: true,
+          },
+          vouchers: {
+            paymentType: true,
+          },
+        },
+        order: {
+          date: 'DESC',
+          id: 'DESC',
+        },
+      });
+
+      const saleIds = new Set(sales.map((sale) => sale.id));
+      const paidQrPayments = await this.qrPaymentsRepository.find({
+        where: {
+          personId,
+          qrStatus: QrPaymentStatus.PAGADO,
+        },
+        order: {
+          createdAt: 'DESC',
+        },
+      });
+      const qrPaymentBySaleId = new Map<number, QrPayment>();
+
+      for (const qrPayment of paidQrPayments) {
+        const createdSaleId = Number(qrPayment.dataResponse?.createdSaleId);
+
+        if (
+          Number.isInteger(createdSaleId) &&
+          saleIds.has(createdSaleId) &&
+          !qrPaymentBySaleId.has(createdSaleId)
+        ) {
+          qrPaymentBySaleId.set(createdSaleId, qrPayment);
+        }
+      }
+
+      const data = sales.map((sale) => {
+        const voucher = sale.vouchers?.[0] ?? null;
+        const qrPayment = qrPaymentBySaleId.get(sale.id) ?? null;
+
+        return {
+          sale: {
+            id: sale.id,
+            code: sale.code,
+            saleState: sale.saleState,
+            personId: sale.personId,
+            date: sale.date,
+            transactionId: sale.transactionId,
+            parameterId: sale.parameter?.id ?? null,
+            createdAt: sale.createdAt,
+            updatedAt: sale.updatedAt,
+          },
+          saleProducts: (sale.saleProducts ?? []).map((saleProduct) => ({
+            id: saleProduct.id,
+            productId: saleProduct.product?.id ?? null,
+            name: saleProduct.name,
+            price: Number(saleProduct.price),
+            amount: saleProduct.amount,
+            total: Number(saleProduct.total),
+          })),
+          voucher: voucher
+            ? {
+                id: voucher.id,
+                customer: voucher.customer,
+                identityCardCustomer: voucher.identityCardCustomer,
+                paymentLocationId: voucher.paymentLocationId,
+                paymentTypeId: voucher.paymentType?.id ?? null,
+                paymentTypeName: voucher.paymentType?.name ?? null,
+                paymentTypeShortened: voucher.paymentType?.shortened ?? null,
+                paymentTypeState: voucher.paymentTypeState,
+                depositDate: voucher.depositDate,
+                total: Number(voucher.total),
+                createdAt: voucher.createdAt,
+              }
+            : null,
+          qrPayment: qrPayment
+            ? {
+                id: qrPayment.id,
+                qrId: qrPayment.qrId,
+                qrImage: qrPayment.qrImage,
+                dataResponse: qrPayment.dataResponse,
+                qrStatus: qrPayment.qrStatus,
+                expirationDateQr: qrPayment.expirationDateQr,
+                createdAt: qrPayment.createdAt,
+                updatedAt: qrPayment.updatedAt,
+              }
+            : null,
+        };
+      });
+
+      return {
+        error: false,
+        message: 'Reporte de ventas obtenido correctamente.',
+        data,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error en salesReportByPerson: ${error.message}`,
+        error.stack,
+      );
+      return {
+        error: true,
+        message: 'Error al obtener el reporte de ventas.',
+        data: null,
+      };
+    }
+  }
+
+  async salesPendingReportByPerson(personId: number) {
+    try {
+      if (!Number.isInteger(personId) || personId <= 0) {
+        return {
+          error: true,
+          message: 'Debe enviar un personId válido.',
+          data: null,
+        };
+      }
+
+      const qrPayments = await this.qrPaymentsRepository.find({
+        where: {
+          personId,
+          qrStatus: QrPaymentStatus.PENDIENTE,
+          expirationDateQr: MoreThan(new Date()),
+        },
+        order: {
+          expirationDateQr: 'ASC',
+          createdAt: 'DESC',
+        },
+      });
+
+      const data = qrPayments.map((qrPayment) => ({
+        id: qrPayment.id,
+        personId: qrPayment.personId,
+        qrId: qrPayment.qrId,
+        qrImage: qrPayment.qrImage,
+        dataResponse: qrPayment.dataResponse,
+        qrStatus: qrPayment.qrStatus,
+        expirationDateQr: qrPayment.expirationDateQr,
+        createdAt: qrPayment.createdAt,
+        updatedAt: qrPayment.updatedAt,
+      }));
+
+      return {
+        error: false,
+        message: 'Reporte de ventas pendientes obtenido correctamente.',
+        data,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error en salesPendingReportByPerson: ${error.message}`,
+        error.stack,
+      );
+      return {
+        error: true,
+        message: 'Error al obtener el reporte de ventas pendientes.',
         data: null,
       };
     }
