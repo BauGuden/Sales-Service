@@ -1,6 +1,6 @@
 export { AccountDataDto } from './account-data.dto';
 export { AccountLookupDataDto } from './account-lookup-data.dto';
-export { CreateSaleDto, CreateSaleProductDto } from './create-sale.dto';
+export { CreateSaleDto, SaleProductDto } from './create-sale.dto';
 export { GroupDataDto } from './group-data.dto';
 export { NormalizedSaleProductDto } from './normalized-sale-product.dto';
 export { ParameterDataDto } from './parameter-data.dto';

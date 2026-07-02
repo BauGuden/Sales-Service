@@ -56,7 +56,7 @@ export class SalesController {
   }
 
   @MessagePattern('sales.createSale')
-  async createSale(@Payload('data') data: CreateSaleDto) {
+  async createSale(@Payload() data: CreateSaleDto) {
     return this.salesService.createSale(data);
   }
 

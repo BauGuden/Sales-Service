@@ -699,10 +699,10 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           },
           {
             name: 'qr_status',
-            type: 'varchar',
-            length: '20',
+            type: 'enum',
+            enumName: 'qr_status_enum',
+            enum: ['PENDIENTE', 'APROBADO', 'RECHAZADO', 'EXPIRADO'],
             default: "'PENDIENTE'",
-            isNullable: false,
           },
           {
             name: 'expiration_date_qr',
