@@ -60,7 +60,7 @@ export class SalesController {
     return this.salesService.createSale(data);
   }
 
-  @MessagePattern('sales.getQRCodeStatus')
+  @MessagePattern('sales.qrCodeStatus')
   async getQRCodeStatus(@Payload() data: GetQrCodeStatusDto) {
     return this.salesService.getQRCodeStatus(data);
   }
@@ -70,8 +70,13 @@ export class SalesController {
     return this.salesService.processBcbPaymentNotification(data);
   }
 
-  @MessagePattern('sales.list')
-  async listSales() {
-    return this.salesService.listSales();
+  @MessagePattern('sales.salesReportByPerson')
+  async salesReportByPerson(@Payload('personId') personId: number) {
+    return this.salesService.salesReportByPerson(personId);
+  }
+
+  @MessagePattern('sales.salesPendingReportByPerson')
+  async salesPendingReportByPerson(@Payload('personId') personId: number) {
+    return this.salesService.salesPendingReportByPerson(personId);
   }
 }
