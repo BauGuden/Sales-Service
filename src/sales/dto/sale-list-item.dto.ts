@@ -12,7 +12,7 @@ export class SaleListItemDto {
   saleId: number;
   code: string | null;
   saleState: SaleState;
-  personId: number;
+  personUuid: string;
   fullName: string;
   identityCard: string;
   nup: number | null;

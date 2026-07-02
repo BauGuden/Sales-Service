@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
@@ -68,9 +69,8 @@ export class BcbQrDataDto {
 }
 
 export class GenerateQrDto {
-  @IsInt()
-  @IsPositive()
-  personId: number;
+  @IsUUID()
+  personUuid: string;
 
   @IsInt()
   @IsPositive()

@@ -10,7 +10,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Group } from './group.entity';
-import { SaleProducts } from './sale-products.entity';
+import { SaleProduct } from './sale-products';
 
 @Entity('products')
 export class Product {
@@ -42,6 +42,6 @@ export class Product {
   @JoinColumn({ name: 'group_id' })
   group: Group;
 
-  @OneToMany(() => SaleProducts, (saleProducts) => saleProducts.product)
-  saleProducts: SaleProducts[];
+  @OneToMany(() => SaleProduct, (saleProduct) => saleProduct.product)
+  saleProducts: SaleProduct[];
 }

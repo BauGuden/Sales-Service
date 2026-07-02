@@ -8,6 +8,7 @@ import {
   IsNumberString,
   IsPositive,
   IsString,
+  IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
@@ -55,9 +56,8 @@ export class CreateSaleVoucherDto {
 }
 
 export class CreateSaleDto {
-  @IsInt()
-  @IsPositive()
-  personId: number;
+  @IsUUID()
+  personUuid: string;
 
   @IsInt()
   @IsPositive()
