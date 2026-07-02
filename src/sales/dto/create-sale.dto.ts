@@ -8,7 +8,6 @@ import {
   IsNumberString,
   IsPositive,
   IsString,
-  IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
@@ -56,8 +55,9 @@ export class saleVoucherDto {
 }
 
 export class CreateSaleDto {
-  @IsUUID()
-  personUuid: string;
+  @IsInt()
+  @IsPositive()
+  personId: number;
 
   @IsInt()
   @IsPositive()
@@ -75,5 +75,5 @@ export class CreateSaleDto {
 
   @ValidateNested()
   @Type(() => saleVoucherDto)
-  voucher:saleVoucherDto;
+  voucher: saleVoucherDto;
 }

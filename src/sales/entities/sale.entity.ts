@@ -36,13 +36,13 @@ export class Sale {
   })
   saleState: SaleState = SaleState.PENDIENTE;
 
-  @Column({ name: 'person_uuid', type: 'uuid' })
-  personUuid: string;
+  @Column({ name: 'person_id', type: 'int' })
+  personId: number;
 
   @Column({ type: 'timestamptz', default: () => 'now()' })
   date: Date;
 
-  @Column({ name: 'transaccion_id', length: 50, nullable: true })
+  @Column({ name: 'transaccion_id', length: 20, nullable: true })
   transactionId: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })

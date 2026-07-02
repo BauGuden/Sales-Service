@@ -7,9 +7,8 @@ import {
 } from 'class-validator';
 
 export class PersonForCreatingSaleDataDto {
-
   @IsInt()
-  id: number
+  id: number;
 
   @IsUUID()
   uuidColumn: string;

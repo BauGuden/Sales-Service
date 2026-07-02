@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, MoreThan, Repository } from 'typeorm';
 import {
   Group,
   Parameter,
@@ -29,7 +29,6 @@ import {
   PaymentTypeDataDto,
   PersonForCreatingSaleDataDto,
   ProductDataDto,
-  SaleListItemDto,
   SearchPersonDataDto,
 } from './dto';
 
@@ -80,7 +79,7 @@ export class SalesService {
         data: data ?? null,
       };
     } catch (error) {
-      this.logError("Error al buscar beneficiarios", error);
+      this.logError('Error al buscar beneficiarios', error);
     }
   }
 
@@ -122,13 +121,10 @@ export class SalesService {
 
       if (accountIds.length > 0) {
         try {
-          const response = await this.nats.firstValue(
-            'accounts.findAllByIds',
-            {
-              ids: accountIds,
-              columns: ['id', 'name', 'shortened'],
-            },
-          );
+          const response = await this.nats.firstValue('accounts.findAllByIds', {
+            ids: accountIds,
+            columns: ['id', 'name', 'shortened'],
+          });
 
           const accounts = Array.isArray(response)
             ? response
@@ -195,7 +191,7 @@ export class SalesService {
 
       const group = await this.groupsRepository.findOne({
         where: { id: parsedGroupId },
-        select: {id: true},
+        select: { id: true },
       });
 
       if (!group) {
@@ -235,10 +231,7 @@ export class SalesService {
         })),
       };
     } catch (error) {
-      this.logError(
-        "Error al obtener los productos de un grupo",
-        error,
-      )
+      this.logError('Error al obtener los productos de un grupo', error);
     }
   }
 
@@ -316,7 +309,7 @@ export class SalesService {
         data: data ?? null,
       };
     } catch (error) {
-      this.logError("Error al obtener entidades financieras", error);
+      this.logError('Error al obtener entidades financieras', error);
     }
   }
 
@@ -340,7 +333,7 @@ export class SalesService {
         data: paymentTypes,
       };
     } catch (error) {
-      this.logError("Error al obtener tipos de pago", error);
+      this.logError('Error al obtener tipos de pago', error);
     }
   }
 
@@ -367,7 +360,7 @@ export class SalesService {
         data: data ?? null,
       };
     } catch (error) {
-      this.logError("Error al obtener cuentas", error);
+      this.logError('Error al obtener cuentas', error);
     }
   }
 
@@ -413,10 +406,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logError(
-        "Error al obtener datos para la venta",
-        error,
-      )
+      this.logError('Error al obtener datos para la venta', error);
     }
   }
 
@@ -496,7 +486,70 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logError("Error en personDetails", error);
+      this.logError('Error en personDetails', error);
+    }
+  }
+
+  private async personDetailsById(personId: number): Promise<{
+    error: boolean;
+    message: string;
+    data: PersonForCreatingSaleDataDto | null;
+  }> {
+    try {
+      if (!Number.isInteger(personId) || personId <= 0) {
+        return {
+          error: true,
+          message: 'Seleccione una persona para crear la venta.',
+          data: null,
+        };
+      }
+
+      const personResponse = await this.nats.firstValue('person.findOne', {
+        term: String(personId),
+        field: 'id',
+      });
+      const person = personResponse?.data ?? personResponse;
+
+      if (!person) {
+        return {
+          error: true,
+          message: 'No se encontró la persona seleccionada.',
+          data: null,
+        };
+      }
+
+      const affiliate = person.personAffiliates?.find(
+        (item: { type?: string; typeId?: number }) =>
+          item.type === 'affiliates',
+      );
+
+      return {
+        error: false,
+        message: 'Datos de la persona obtenidos correctamente',
+        data: {
+          id: person.id,
+          uuidColumn: person.uuidColumn,
+          fullName: [
+            person.firstName,
+            person.secondName,
+            person.lastName,
+            person.mothersLastName,
+          ]
+            .filter(Boolean)
+            .join(' '),
+          identityCard: person.identityCard ?? '',
+          nup: affiliate?.typeId ?? null,
+          isPolice: Boolean(affiliate),
+        },
+      };
+    } catch (error) {
+      this.logError('Error en personDetailsById', error);
+
+      return {
+        error: true,
+        message: 'No se pudo validar la persona seleccionada.',
+        data: null,
+      };
     }
   }
 
@@ -572,7 +625,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logError("Error al obtener datos para crear la venta", error);
+      this.logError('Error al obtener datos para crear la venta', error);
     }
   }
 
@@ -580,7 +633,7 @@ export class SalesService {
     error: boolean;
     message: string;
     data: {
-      personUuid: string;
+      personId: number;
       paymentTypeId: number;
       destinationAccount: string;
       accountNumber: string;
@@ -626,7 +679,7 @@ export class SalesService {
       const generatedQr = await this.generateBcbQr(
         this.buildBcbQrPayload(
           qrData,
-          { id: null, personUuid: validation.personUuid },
+          { id: null, personId: validation.personId },
           validation.saleTotal,
           validation.normalizedProducts,
           validation.person,
@@ -640,11 +693,11 @@ export class SalesService {
 
       await this.qrPaymentsRepository.save(
         this.qrPaymentsRepository.create({
-          personUuid: validation.personUuid,
+          personId: validation.personId,
           qrId,
           qrImage,
           dataResponse: {
-            personUuid: validation.personUuid,
+            personId: validation.personId,
             paymentTypeId: validation.paymentTypeId,
             parameterId: validation.parameterId,
             saleProducts: this.mapInputSaleProducts(data.saleProducts),
@@ -658,7 +711,7 @@ export class SalesService {
         error: false,
         message: 'QR generado correctamente',
         data: {
-          personUuid: validation.personUuid,
+          personId: validation.personId,
           paymentTypeId: validation.paymentTypeId,
           destinationAccount: qrData.destinationAccount,
           accountNumber: qrData.accountNumber,
@@ -672,7 +725,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logError("Error en la generación de QR", error);
+      this.logError('Error en la generación de QR', error);
     }
   }
 
@@ -681,7 +734,7 @@ export class SalesService {
     message: string;
     data: {
       datosIngreso: {
-        personUuid: string;
+        personId: number;
         paymentTypeId: number;
         parameterId: number;
         saleProducts: {
@@ -696,7 +749,7 @@ export class SalesService {
         id: number;
         code: string | null;
         saleState: SaleState;
-        personUuid: string;
+        personId: number;
         transactionId: string | null;
         parameterId: number;
       };
@@ -768,7 +821,7 @@ export class SalesService {
 
       return this.buildCreateSaleResponse(data, validation, createdSale);
     } catch (error) {
-      this.logError("Error en la creación de venta", error);
+      this.logError('Error en la creación de venta', error);
     }
   }
 
@@ -791,7 +844,6 @@ export class SalesService {
     qrPayment: QrPaymentSale | null;
   }> {
     const {
-      data,
       validation,
       voucher,
       transactionId = null,
@@ -800,11 +852,18 @@ export class SalesService {
     } = params;
 
     return this.dataSource.transaction(async (manager) => {
+      const saleState = SaleState.VIGENTE;
+      const code =
+        saleState === SaleState.VIGENTE &&
+        this.isManualPaymentType(validation.paymentType)
+          ? await this.generateNextSaleCode(manager)
+          : null;
+
       const sale = await manager.save(
         manager.create(Sale, {
-          code: null,
-          saleState: SaleState.VIGENTE,
-          personUuid: validation.personUuid,
+          code,
+          saleState,
+          personId: validation.personId,
           transactionId,
           parameter: validation.parameter,
         }),
@@ -857,6 +916,28 @@ export class SalesService {
     });
   }
 
+  private async generateNextSaleCode(manager: EntityManager): Promise<string> {
+    const saleTablePath = manager.getRepository(Sale).metadata.tablePath;
+
+    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `${saleTablePath}:code`,
+    ]);
+
+    const result = await manager
+      .createQueryBuilder(Sale, 'sale')
+      .select('COALESCE(MAX(CAST(sale.code AS BIGINT)), 0)', 'maxCode')
+      .where("sale.code ~ '^[0-9]+$'")
+      .getRawOne<{ maxCode: string }>();
+
+    const nextCode = Number(result?.maxCode ?? 0) + 1;
+
+    if (!Number.isSafeInteger(nextCode) || nextCode > 99_999_999) {
+      throw new Error('Se alcanzó el límite de códigos de venta de 8 dígitos.');
+    }
+
+    return String(nextCode).padStart(8, '0');
+  }
+
   private buildCreateSaleResponse(
     data: CreateSaleDto | GenerateQrDto,
     validation: any,
@@ -872,7 +953,7 @@ export class SalesService {
       message: 'Venta creada correctamente',
       data: {
         datosIngreso: {
-          personUuid: validation.personUuid,
+          personId: validation.personId,
           paymentTypeId: validation.paymentTypeId,
           parameterId: validation.parameterId,
           saleProducts: this.mapInputSaleProducts(data.saleProducts),
@@ -881,7 +962,7 @@ export class SalesService {
           id: createdSale.sale.id,
           code: createdSale.sale.code,
           saleState: createdSale.sale.saleState,
-          personUuid: createdSale.sale.personUuid,
+          personId: createdSale.sale.personId,
           transactionId: createdSale.sale.transactionId,
           parameterId: validation.parameterId,
         },
@@ -973,7 +1054,7 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logError("Error al consultar el estado del QR", error);
+      this.logError('Error al consultar el estado del QR', error);
     }
   }
 
@@ -1136,113 +1217,181 @@ export class SalesService {
         },
       };
     } catch (error) {
-      this.logError("Error al procesar notificación BCB", error);
+      this.logError('Error al procesar notificación BCB', error);
     }
   }
 
-  async listSales(): Promise<{
-    error: boolean;
-    message: string;
-    data: SaleListItemDto[] | null;
-  }> {
+  async salesReportByPerson(personId: number) {
     try {
-      const sales = await this.salesRepository
-        .createQueryBuilder('sale')
-        .leftJoinAndSelect('sale.saleProducts', 'saleProduct')
-        .leftJoinAndSelect('saleProduct.product', 'product')
-        .leftJoinAndSelect('sale.vouchers', 'voucher')
-        .leftJoinAndSelect('voucher.paymentType', 'paymentType')
-        .select([
-          'sale.id',
-          'sale.code',
-          'sale.saleState',
-          'sale.personUuid',
-          'sale.date',
-          'saleProduct.id',
-          'saleProduct.name',
-          'saleProduct.price',
-          'saleProduct.amount',
-          'saleProduct.total',
-          'product.id',
-          'voucher.id',
-          'voucher.customer',
-          'voucher.identityCardCustomer',
-          'voucher.depositDate',
-          'voucher.total',
-          'paymentType.id',
-          'paymentType.name',
-          'paymentType.shortened',
-        ])
-        .orderBy('sale.date', 'DESC')
-        .addOrderBy('sale.id', 'DESC')
-        .addOrderBy('saleProduct.id', 'ASC')
-        .getMany();
-
-      const personUuids = [
-        ...new Set(sales.map((sale) => sale.personUuid).filter(Boolean)),
-      ];
-      const personResults = await Promise.all(
-        personUuids.map((personUuid) => this.personDetails(personUuid)),
-      );
-      const personsByUuid = new Map<string, PersonForCreatingSaleDataDto>();
-
-      for (const [index, personResult] of personResults.entries()) {
-        if (personResult.error || !personResult.data) {
-          return {
-            error: true,
-            message: personResult.error
-              ? personResult.message
-              : 'No se encontró una de las personas de las ventas.',
-            data: null,
-          };
-        }
-
-        personsByUuid.set(personUuids[index], personResult.data);
+      if (!Number.isInteger(personId) || personId <= 0) {
+        return {
+          error: true,
+          message: 'Debe enviar un personId válido.',
+          data: null,
+        };
       }
 
-      const data: SaleListItemDto[] = sales.map((sale) => {
-        const person = personsByUuid.get(sale.personUuid);
-        const voucher = sale.vouchers?.[0] ?? null;
+      const sales = await this.salesRepository.find({
+        where: {
+          personId,
+          saleState: SaleState.VIGENTE,
+        },
+        relations: {
+          parameter: true,
+          saleProducts: {
+            product: true,
+          },
+          vouchers: {
+            paymentType: true,
+          },
+        },
+        order: {
+          date: 'DESC',
+          id: 'DESC',
+        },
+      });
 
-        if (!person) {
-          throw new Error('No se encontró una de las personas de las ventas.');
+      const saleIds = new Set(sales.map((sale) => sale.id));
+      const paidQrPayments = await this.qrPaymentsRepository.find({
+        where: {
+          personId,
+          qrStatus: QrPaymentStatus.PAGADO,
+        },
+        order: {
+          createdAt: 'DESC',
+        },
+      });
+      const qrPaymentBySaleId = new Map<number, QrPaymentSale>();
+
+      for (const qrPayment of paidQrPayments) {
+        const createdSaleId = Number(qrPayment.dataResponse?.createdSaleId);
+
+        if (
+          Number.isInteger(createdSaleId) &&
+          saleIds.has(createdSaleId) &&
+          !qrPaymentBySaleId.has(createdSaleId)
+        ) {
+          qrPaymentBySaleId.set(createdSaleId, qrPayment);
         }
+      }
 
-        const saleDate = this.formatBoliviaDateParts(sale.date);
+      const data = sales.map((sale) => {
+        const voucher = sale.vouchers?.[0] ?? null;
+        const qrPayment = qrPaymentBySaleId.get(sale.id) ?? null;
 
         return {
-          saleId: sale.id,
-          code: sale.code,
-          saleState: sale.saleState,
-          personUuid: sale.personUuid,
-          fullName: person.fullName,
-          identityCard: person.identityCard,
-          nup: person.nup,
-          isPolice: person.isPolice,
-          hourSale: saleDate.hourSale,
-          dateSaleFormat: saleDate.dateSaleFormat,
-          products: (sale.saleProducts ?? []).map((saleProduct) => ({
-            productId: saleProduct.product.id,
+          sale: {
+            id: sale.id,
+            code: sale.code,
+            saleState: sale.saleState,
+            personId: sale.personId,
+            date: sale.date,
+            transactionId: sale.transactionId,
+            parameterId: sale.parameter?.id ?? null,
+            createdAt: sale.createdAt,
+            updatedAt: sale.updatedAt,
+          },
+          saleProducts: (sale.saleProducts ?? []).map((saleProduct) => ({
+            id: saleProduct.id,
+            productId: saleProduct.product?.id ?? null,
             name: saleProduct.name,
             price: Number(saleProduct.price),
             amount: saleProduct.amount,
-            subTotal: Number(saleProduct.total),
+            total: Number(saleProduct.total),
           })),
-          name: voucher?.paymentType?.name ?? null,
-          shortened: voucher?.paymentType?.shortened ?? null,
-          bcbQrId: null,
-          depositDate: voucher?.depositDate ?? null,
-          total: voucher ? Number(voucher.total) : null,
+          voucher: voucher
+            ? {
+                id: voucher.id,
+                customer: voucher.customer,
+                identityCardCustomer: voucher.identityCardCustomer,
+                paymentLocationId: voucher.paymentLocationId,
+                paymentTypeId: voucher.paymentType?.id ?? null,
+                paymentTypeName: voucher.paymentType?.name ?? null,
+                paymentTypeShortened: voucher.paymentType?.shortened ?? null,
+                paymentTypeState: voucher.paymentTypeState,
+                depositDate: voucher.depositDate,
+                total: Number(voucher.total),
+                createdAt: voucher.createdAt,
+              }
+            : null,
+          qrPayment: qrPayment
+            ? {
+                id: qrPayment.id,
+                qrId: qrPayment.qrId,
+                qrImage: qrPayment.qrImage,
+                dataResponse: qrPayment.dataResponse,
+                qrStatus: qrPayment.qrStatus,
+                expirationDateQr: qrPayment.expirationDateQr,
+                createdAt: qrPayment.createdAt,
+                updatedAt: qrPayment.updatedAt,
+              }
+            : null,
         };
       });
 
       return {
         error: false,
-        message: 'Ventas obtenidas correctamente',
+        message: 'Reporte de ventas obtenido correctamente.',
         data,
       };
     } catch (error) {
-      this.logError("Error al obtener ventas", error);
+      this.logError('Error en salesReportByPerson', error);
+
+      return {
+        error: true,
+        message: 'Error al obtener el reporte de ventas.',
+        data: null,
+      };
+    }
+  }
+
+  async salesPendingReportByPerson(personId: number) {
+    try {
+      if (!Number.isInteger(personId) || personId <= 0) {
+        return {
+          error: true,
+          message: 'Debe enviar un personId válido.',
+          data: null,
+        };
+      }
+
+      const qrPayments = await this.qrPaymentsRepository.find({
+        where: {
+          personId,
+          qrStatus: QrPaymentStatus.PENDIENTE,
+          expirationDateQr: MoreThan(new Date()),
+        },
+        order: {
+          expirationDateQr: 'ASC',
+          createdAt: 'DESC',
+        },
+      });
+
+      const data = qrPayments.map((qrPayment) => ({
+        id: qrPayment.id,
+        personId: qrPayment.personId,
+        qrId: qrPayment.qrId,
+        qrImage: qrPayment.qrImage,
+        dataResponse: qrPayment.dataResponse,
+        qrStatus: qrPayment.qrStatus,
+        expirationDateQr: qrPayment.expirationDateQr,
+        createdAt: qrPayment.createdAt,
+        updatedAt: qrPayment.updatedAt,
+      }));
+
+      return {
+        error: false,
+        message: 'Reporte de ventas pendientes obtenido correctamente.',
+        data,
+      };
+    } catch (error) {
+      this.logError('Error en salesPendingReportByPerson', error);
+
+      return {
+        error: true,
+        message: 'Error al obtener el reporte de ventas pendientes.',
+        data: null,
+      };
     }
   }
 
@@ -1316,7 +1465,7 @@ export class SalesService {
         ? (qrPayment.dataResponse as any)
         : null;
 
-    const personUuid = String(storedData?.personUuid ?? '').trim();
+    const personId = Number(storedData?.personId);
     const paymentTypeId = Number(storedData?.paymentTypeId);
     const parameterId = Number(storedData?.parameterId);
     const saleProducts = Array.isArray(storedData?.saleProducts)
@@ -1324,7 +1473,8 @@ export class SalesService {
       : [];
 
     if (
-      !personUuid ||
+      !Number.isInteger(personId) ||
+      personId <= 0 ||
       !Number.isInteger(paymentTypeId) ||
       paymentTypeId <= 0 ||
       !Number.isInteger(parameterId) ||
@@ -1335,7 +1485,7 @@ export class SalesService {
     }
 
     return {
-      personUuid,
+      personId,
       paymentTypeId,
       parameterId,
       saleProducts,
@@ -1377,7 +1527,7 @@ export class SalesService {
   private async validateSaleInput(
     data: CreateSaleDto | GenerateQrDto,
   ): Promise<any> {
-    const personUuid = data.personUuid?.trim();
+    const personId = Number(data.personId);
     const paymentTypeId = Number(data.paymentTypeId);
     const parameterId = Number(data.parameterId);
 
@@ -1432,7 +1582,7 @@ export class SalesService {
           group: true,
         },
       }),
-      this.personDetails(personUuid),
+      this.personDetailsById(personId),
     ]);
 
     if (!parameter) {
@@ -1539,7 +1689,7 @@ export class SalesService {
 
     return {
       error: false,
-      personUuid,
+      personId,
       paymentTypeId,
       parameterId,
       normalizedProducts,
@@ -1836,9 +1986,7 @@ export class SalesService {
 
   private buildBcbQrPayload(
     qrData: BcbQrDataDto,
-    sale:
-      | Pick<Sale, 'id' | 'personUuid'>
-      | { id?: number | null; personUuid: string },
+    sale: { id?: number | null; personId: number },
     saleTotal: number,
     saleProducts: NormalizedSaleProductDto[],
     person: PersonForCreatingSaleDataDto,
@@ -1873,16 +2021,14 @@ export class SalesService {
 
   private buildBcbQrMetaData(
     input: Record<string, unknown> | undefined,
-    sale:
-      | Pick<Sale, 'id' | 'personUuid'>
-      | { id?: number | null; personUuid: string },
+    sale: { id?: number | null; personId: number },
     saleProducts: NormalizedSaleProductDto[],
     person: PersonForCreatingSaleDataDto,
   ): Record<string, string> {
     const metadata: Record<string, unknown> = {
       ...(input ?? {}),
       ...(sale.id ? { saleId: sale.id } : {}),
-      personUuid: sale.personUuid,
+      personId: sale.personId,
       fullName: person.fullName,
       identityCard: person.identityCard,
       productCount: saleProducts.length,
@@ -1973,5 +2119,4 @@ export class SalesService {
       this.logger.error(`${context}: ${String(error)}`);
     }
   }
-
 }

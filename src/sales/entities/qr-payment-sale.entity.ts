@@ -19,8 +19,8 @@ export class QrPaymentSale {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'person_uuid', type: 'uuid' })
-  personUuid: string;
+  @Column({ name: 'person_id', type: 'int' })
+  personId: number;
 
   @Column({ name: 'qr_id', length: 50 })
   qrId: string;
