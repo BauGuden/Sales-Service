@@ -506,9 +506,9 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             isNullable: false,
           },
           {
-            name: 'date',
-            type: 'timestamptz',
-            default: 'now()',
+            name: 'receptionist',
+            type: 'varchar',
+            length: '100',
             isNullable: false,
           },
           {

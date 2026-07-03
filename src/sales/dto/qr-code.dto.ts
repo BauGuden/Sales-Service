@@ -72,6 +72,11 @@ export class GenerateQrDto {
   @IsPositive()
   personId: number;
 
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  receptionist: string;
+
   @IsInt()
   @IsPositive()
   paymentTypeId: number;

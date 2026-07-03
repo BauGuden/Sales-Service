@@ -698,6 +698,7 @@ export class SalesService {
           qrImage,
           dataResponse: {
             personId: validation.personId,
+            receptionist: validation.receptionist,
             paymentTypeId: validation.paymentTypeId,
             parameterId: validation.parameterId,
             saleProducts: this.mapInputSaleProducts(data.saleProducts),
@@ -735,6 +736,7 @@ export class SalesService {
     data: {
       datosIngreso: {
         personId: number;
+        receptionist: string;
         paymentTypeId: number;
         parameterId: number;
         saleProducts: {
@@ -750,6 +752,7 @@ export class SalesService {
         code: string | null;
         saleState: SaleState;
         personId: number;
+        receptionist: string;
         transactionId: string | null;
         parameterId: number;
       };
@@ -864,6 +867,7 @@ export class SalesService {
           code,
           saleState,
           personId: validation.personId,
+          receptionist: validation.receptionist,
           transactionId,
           parameter: validation.parameter,
         }),
@@ -954,6 +958,7 @@ export class SalesService {
       data: {
         datosIngreso: {
           personId: validation.personId,
+          receptionist: validation.receptionist,
           paymentTypeId: validation.paymentTypeId,
           parameterId: validation.parameterId,
           saleProducts: this.mapInputSaleProducts(data.saleProducts),
@@ -963,6 +968,7 @@ export class SalesService {
           code: createdSale.sale.code,
           saleState: createdSale.sale.saleState,
           personId: createdSale.sale.personId,
+          receptionist: createdSale.sale.receptionist,
           transactionId: createdSale.sale.transactionId,
           parameterId: validation.parameterId,
         },
@@ -1233,10 +1239,8 @@ export class SalesService {
       const sales = await this.salesRepository.find({
         where: {
           personId,
-          saleState: SaleState.VIGENTE,
         },
         relations: {
-          parameter: true,
           saleProducts: {
             product: true,
           },
@@ -1245,22 +1249,77 @@ export class SalesService {
           },
         },
         order: {
-          date: 'DESC',
+          createdAt: 'DESC',
           id: 'DESC',
         },
       });
-      const saleIds = new Set(sales.map((sale) => sale.id));
 
-      const paidQrPayments = await this.qrPaymentSaleRepository.find({
-        where: {
-          personId,
-          qrStatus: QrPaymentStatus.PAGADO,
-        },
-        order: {
-          createdAt: 'DESC',
-        },
-      });
-      console.log(paidQrPayments);
+      if (sales.length === 0) {
+        return {
+          error: false,
+          message: 'La persona no tiene ventas registradas.',
+          data: [],
+        };
+      }
+
+      const saleIds = new Set(sales.map((sale) => sale.id));
+      const paymentLocationIds = [
+        ...new Set(
+          sales
+            .flatMap((sale) => sale.vouchers ?? [])
+            .map((voucher) => voucher.paymentLocationId)
+            .filter(
+              (id): id is number => Number.isInteger(id) && Number(id) > 0,
+            ),
+        ),
+      ];
+
+      const [paidQrPayments, paymentLocations] = await Promise.all([
+        this.qrPaymentSaleRepository.find({
+          where: {
+            personId,
+            qrStatus: QrPaymentStatus.PAGADO,
+          },
+          order: {
+            createdAt: 'DESC',
+          },
+        }),
+        Promise.all(
+          paymentLocationIds.map(async (id) => {
+            const response = await this.nats.firstValue(
+              'financialEntities.findOne',
+              { id },
+            );
+
+            if (
+              !response?.serviceStatus ||
+              typeof response.name !== 'string' ||
+              typeof response.code !== 'string'
+            ) {
+              return null;
+            }
+
+            return {
+              id,
+              name: response.name,
+              code: response.code,
+            };
+          }),
+        ),
+      ]);
+      const paymentLocationById = new Map(
+        paymentLocations
+          .filter(
+            (
+              paymentLocation,
+            ): paymentLocation is {
+              id: number;
+              name: string;
+              code: string;
+            } => paymentLocation !== null,
+          )
+          .map((paymentLocation) => [paymentLocation.id, paymentLocation]),
+      );
       const qrPaymentBySaleId = new Map<number, QrPaymentSale>();
 
       for (const qrPayment of paidQrPayments) {
@@ -1280,17 +1339,12 @@ export class SalesService {
         const qrPayment = qrPaymentBySaleId.get(sale.id) ?? null;
 
         return {
-          sale: {
-            id: sale.id,
-            code: sale.code,
-            saleState: sale.saleState,
-            personId: sale.personId,
-            date: sale.date,
-            transactionId: sale.transactionId,
-            parameterId: sale.parameter?.id ?? null,
-            createdAt: sale.createdAt,
-            updatedAt: sale.updatedAt,
-          },
+          id: sale.id,
+          code: sale.code,
+          saleState: sale.saleState,
+          personId: sale.personId,
+          receptionist: sale.receptionist,
+          dateReception: sale.createdAt,
           saleProducts: (sale.saleProducts ?? []).map((saleProduct) => ({
             id: saleProduct.id,
             productId: saleProduct.product?.id ?? null,
@@ -1305,6 +1359,16 @@ export class SalesService {
                 customer: voucher.customer,
                 identityCardCustomer: voucher.identityCardCustomer,
                 paymentLocationId: voucher.paymentLocationId,
+                paymentLocationName:
+                  voucher.paymentLocationId === null
+                    ? null
+                    : (paymentLocationById.get(voucher.paymentLocationId)
+                        ?.name ?? null),
+                paymentLocationCode:
+                  voucher.paymentLocationId === null
+                    ? null
+                    : (paymentLocationById.get(voucher.paymentLocationId)
+                        ?.code ?? null),
                 paymentTypeId: voucher.paymentType?.id ?? null,
                 paymentTypeName: voucher.paymentType?.name ?? null,
                 paymentTypeShortened: voucher.paymentType?.shortened ?? null,
@@ -1460,6 +1524,10 @@ export class SalesService {
         : null;
 
     const personId = Number(storedData?.personId);
+    const receptionist =
+      typeof storedData?.receptionist === 'string'
+        ? storedData.receptionist.trim()
+        : '';
     const paymentTypeId = Number(storedData?.paymentTypeId);
     const parameterId = Number(storedData?.parameterId);
     const saleProducts = Array.isArray(storedData?.saleProducts)
@@ -1469,6 +1537,7 @@ export class SalesService {
     if (
       !Number.isInteger(personId) ||
       personId <= 0 ||
+      !receptionist ||
       !Number.isInteger(paymentTypeId) ||
       paymentTypeId <= 0 ||
       !Number.isInteger(parameterId) ||
@@ -1480,6 +1549,7 @@ export class SalesService {
 
     return {
       personId,
+      receptionist,
       paymentTypeId,
       parameterId,
       saleProducts,
@@ -1522,8 +1592,18 @@ export class SalesService {
     data: CreateSaleDto | GenerateQrDto,
   ): Promise<any> {
     const personId = Number(data.personId);
+    const receptionist =
+      typeof data.receptionist === 'string' ? data.receptionist.trim() : '';
     const paymentTypeId = Number(data.paymentTypeId);
     const parameterId = Number(data.parameterId);
+
+    if (!receptionist) {
+      return {
+        error: true,
+        message: 'Debe enviar el nombre del recepcionista.',
+        data: null,
+      };
+    }
 
     const normalizedProducts: NormalizedSaleProductDto[] =
       data.saleProducts.map((item) => {
@@ -1684,6 +1764,7 @@ export class SalesService {
     return {
       error: false,
       personId,
+      receptionist,
       paymentTypeId,
       parameterId,
       normalizedProducts,
