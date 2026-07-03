@@ -14,7 +14,7 @@ export enum QrPaymentStatus {
   EXPIRADO = 'EXPIRADO',
 }
 
-@Entity('qr_payments_sales')
+@Entity('qr_payment_sales')
 export class QrPaymentSale {
   @PrimaryGeneratedColumn()
   id: number;

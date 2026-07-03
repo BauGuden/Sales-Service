@@ -1,10 +1,10 @@
+import { dbEnvs } from 'src/config';
 import {
   MigrationInterface,
   QueryRunner,
   Table,
   TableForeignKey,
 } from 'typeorm';
-import { dbEnvs } from 'src/config';
 
 const GROUPS = [
   { id: 1, name: 'gastos administrativos', shortened: 'GA', accountId: 1 },
@@ -100,7 +100,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
     await this.createPaymentTypesTable(queryRunner);
     await this.createSalesTable(queryRunner);
     await this.createVouchersTable(queryRunner);
-    await this.createQrPaymentsTable(queryRunner);
+    await this.createQrPaymentSalesTable(queryRunner);
     await this.createSaleProductsTable(queryRunner);
     await this.seedCatalogs(queryRunner);
   }
@@ -115,9 +115,9 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
       );
     }
 
-    if (await queryRunner.hasTable(`${this.schema}.qr_payments_sales`)) {
+    if (await queryRunner.hasTable(`${this.schema}.qr_payment_sales`)) {
       await queryRunner.dropTable(
-        `${this.schema}.qr_payments_sales`,
+        `${this.schema}.qr_payment_sales`,
         true,
         true,
         true,
@@ -658,15 +658,15 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
     ]);
   }
 
-  private async createQrPaymentsTable(queryRunner: QueryRunner): Promise<void> {
-    if (await queryRunner.hasTable(`${this.schema}.qr_payments_sales`)) {
+  private async createQrPaymentSalesTable(queryRunner: QueryRunner): Promise<void> {
+    if (await queryRunner.hasTable(`${this.schema}.qr_payment_sales`)) {
       return;
     }
 
     await queryRunner.createTable(
       new Table({
         schema: this.schema,
-        name: 'qr_payments_sales',
+        name: 'qr_payment_sales',
         columns: [
           {
             name: 'id',
@@ -701,7 +701,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             name: 'qr_status',
             type: 'enum',
             enumName: 'qr_status_enum',
-            enum: ['PENDIENTE', 'APROBADO', 'RECHAZADO', 'EXPIRADO'],
+            enum: ['PENDIENTE','PAGADO','RECHAZADO','EXPIRADO'],
             default: "'PENDIENTE'",
           },
           {
@@ -731,8 +731,8 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
     );
 
     await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_qr_payments_sales_person_id_expiration_date_qr"
-       ON "${this.schema}"."qr_payments_sales" ("person_id", "expiration_date_qr")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_qr_payment_sales_person_id_expiration_date_qr"
+       ON "${this.schema}"."qr_payment_sales" ("person_id", "expiration_date_qr")`,
     );
   }
 

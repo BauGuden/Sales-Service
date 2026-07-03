@@ -49,7 +49,7 @@ export class SalesService {
     @InjectRepository(Sale)
     private readonly salesRepository: Repository<Sale>,
     @InjectRepository(QrPaymentSale)
-    private readonly qrPaymentsRepository: Repository<QrPaymentSale>,
+    private readonly qrPaymentSaleRepository: Repository<QrPaymentSale>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -691,8 +691,8 @@ export class SalesService {
         this.parseOptionalDate(qrData.fechaVencimientoQR) ??
         this.buildDefaultQrExpiration();
 
-      await this.qrPaymentsRepository.save(
-        this.qrPaymentsRepository.create({
+      await this.qrPaymentSaleRepository.save(
+        this.qrPaymentSaleRepository.create({
           personId: validation.personId,
           qrId,
           qrImage,
@@ -1021,7 +1021,7 @@ export class SalesService {
         };
       }
 
-      const qrPayment = await this.qrPaymentsRepository.findOne({
+      const qrPayment = await this.qrPaymentSaleRepository.findOne({
         where: { qrId },
       });
       const response = await this.getBcbQrStatus(qrId);
@@ -1034,7 +1034,7 @@ export class SalesService {
       if (qrPayment) {
         qrPayment.qrStatus = qrStatus;
 
-        await this.qrPaymentsRepository.save(qrPayment);
+        await this.qrPaymentSaleRepository.save(qrPayment);
       }
 
       return {
@@ -1078,7 +1078,7 @@ export class SalesService {
         };
       }
 
-      const qrPayment = await this.qrPaymentsRepository.findOne({
+      const qrPayment = await this.qrPaymentSaleRepository.findOne({
         where: { qrId },
       });
 
@@ -1100,7 +1100,7 @@ export class SalesService {
           lastBcbNotification: notification,
         });
 
-        await this.qrPaymentsRepository.save(qrPayment);
+        await this.qrPaymentSaleRepository.save(qrPayment);
 
         return {
           error: false,
@@ -1140,7 +1140,7 @@ export class SalesService {
         qrPayment.dataResponse = this.mergeQrPaymentDataResponse(qrPayment, {
           lastBcbNotification: notification,
         });
-        await this.qrPaymentsRepository.save(qrPayment);
+        await this.qrPaymentSaleRepository.save(qrPayment);
 
         return {
           error: false,
@@ -1221,7 +1221,7 @@ export class SalesService {
     }
   }
 
-  async salesReportByPerson(personId: number) {
+  async personSales(personId: number) {
     try {
       if (!Number.isInteger(personId) || personId <= 0) {
         return {
@@ -1230,7 +1230,6 @@ export class SalesService {
           data: null,
         };
       }
-
       const sales = await this.salesRepository.find({
         where: {
           personId,
@@ -1250,9 +1249,9 @@ export class SalesService {
           id: 'DESC',
         },
       });
-
       const saleIds = new Set(sales.map((sale) => sale.id));
-      const paidQrPayments = await this.qrPaymentsRepository.find({
+
+      const paidQrPayments = await this.qrPaymentSaleRepository.find({
         where: {
           personId,
           qrStatus: QrPaymentStatus.PAGADO,
@@ -1261,6 +1260,7 @@ export class SalesService {
           createdAt: 'DESC',
         },
       });
+      console.log(paidQrPayments);
       const qrPaymentBySaleId = new Map<number, QrPaymentSale>();
 
       for (const qrPayment of paidQrPayments) {
@@ -1335,13 +1335,7 @@ export class SalesService {
         data,
       };
     } catch (error) {
-      this.logError('Error en salesReportByPerson', error);
-
-      return {
-        error: true,
-        message: 'Error al obtener el reporte de ventas.',
-        data: null,
-      };
+      this.logError('Error en mostrar ventas de la persona', error);
     }
   }
 
@@ -1355,7 +1349,7 @@ export class SalesService {
         };
       }
 
-      const qrPayments = await this.qrPaymentsRepository.find({
+      const qrPayments = await this.qrPaymentSaleRepository.find({
         where: {
           personId,
           qrStatus: QrPaymentStatus.PENDIENTE,

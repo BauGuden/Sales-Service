@@ -70,9 +70,9 @@ export class SalesController {
     return this.salesService.processBcbPaymentNotification(data);
   }
 
-  @MessagePattern('sales.salesReportByPerson')
-  async salesReportByPerson(@Payload('personId') personId: number) {
-    return this.salesService.salesReportByPerson(personId);
+  @MessagePattern('sales.personSales')
+  async personSales(@Payload('personId') personId: number) {
+    return this.salesService.personSales(personId);
   }
 
   @MessagePattern('sales.salesPendingReportByPerson')
