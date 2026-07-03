@@ -4,6 +4,7 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    "ignoreDeprecations": "6.0"
+    "ignoreDeprecations": "6.0",
+    "tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo",
   },
 }
