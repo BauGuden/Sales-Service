@@ -59,6 +59,11 @@ export class CreateSaleDto {
   @IsPositive()
   personId: number;
 
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  receptionist: string;
+
   @IsInt()
   @IsPositive()
   parameterId: number;

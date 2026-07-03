@@ -39,8 +39,8 @@ export class Sale {
   @Column({ name: 'person_id', type: 'int' })
   personId: number;
 
-  @Column({ type: 'timestamptz', default: () => 'now()' })
-  date: Date;
+  @Column({ length: 100 })
+  receptionist: string;
 
   @Column({ name: 'transaccion_id', length: 20, nullable: true })
   transactionId: string | null;
