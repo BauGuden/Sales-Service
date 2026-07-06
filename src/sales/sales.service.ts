@@ -42,6 +42,7 @@ import {
 @Injectable()
 export class SalesService {
   private readonly logger = new Logger('SalesService');
+  private readonly qrTempPath = 'temporalqr';
 
   constructor(
     private readonly nats: NatsService,
@@ -709,7 +710,7 @@ export class SalesService {
       const expirationDateQr =
         this.parseOptionalDate(qrData.fechaVencimientoQR) ??
         this.buildDefaultQrExpiration();
-      await this.saveTemporaryQrImage(qrId, qrImage, expirationDateQr);
+      await this.saveTemporaryQrImage(qrId, qrImage);
 
       await this.qrPaymentSaleRepository.save(
         this.qrPaymentSaleRepository.create({
@@ -1589,13 +1590,11 @@ export class SalesService {
   private async saveTemporaryQrImage(
     qrId: string,
     qrImage: string,
-    expirationDateQr: Date,
   ): Promise<void> {
-    const ttlMs = Math.max(expirationDateQr.getTime() - Date.now(), 1000);
-    const response = await this.nats.firstValue('bcb.saveQrImageTmp', {
-      qrId,
-      qrImage,
-      ttlMs,
+    const response = await this.nats.firstValue('ftp.saveDataTmp', {
+      path: this.qrTempPath,
+      name: this.buildQrImageTmpName(qrId),
+      data: { qrImage },
     });
 
     if (!response?.serviceStatus || response?.statusSaved !== true) {
@@ -1604,20 +1603,23 @@ export class SalesService {
   }
 
   private async getTemporaryQrImage(qrId: string): Promise<string | null> {
-    const response = await this.nats.firstValue('bcb.getQrImageTmp', { qrId });
+    const response = await this.nats.firstValue('ftp.getDataTmp', {
+      path: this.qrTempPath,
+      name: this.buildQrImageTmpName(qrId),
+    });
     const qrImage = response?.qrImage;
 
     return typeof qrImage === 'string' && qrImage.length > 0 ? qrImage : null;
   }
 
   private async removeTemporaryQrImage(qrId: string): Promise<void> {
-    const response = await this.nats.firstValue('bcb.removeQrImageTmp', {
-      qrId,
-    });
+    this.logger.debug(
+      `QR temporal ${qrId} queda gestionado por TTL de ftp.saveDataTmp`,
+    );
+  }
 
-    if (!response?.serviceStatus || response?.statusRemoved !== true) {
-      this.logger.warn(`No se pudo eliminar la imagen QR temporal ${qrId}`);
-    }
+  private buildQrImageTmpName(qrId: string): string {
+    return `${encodeURIComponent(qrId)}.json`;
   }
 
   private async deleteExpiredPendingQrPayments(
