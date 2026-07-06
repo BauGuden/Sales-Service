@@ -1,7 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
-import { DataSource, EntityManager, In, MoreThan, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  LessThan,
+  MoreThan,
+  Repository,
+} from 'typeorm';
 import {
   Group,
   Parameter,
@@ -35,6 +42,7 @@ import {
 @Injectable()
 export class SalesService {
   private readonly logger = new Logger('SalesService');
+  private readonly qrTempPath = 'temporalqr';
 
   constructor(
     private readonly nats: NatsService,
@@ -657,6 +665,8 @@ export class SalesService {
     } | null;
   }> {
     try {
+      await this.deleteExpiredPendingQrPayments();
+
       const validation = await this.validateSaleInput(data);
 
       if (validation.error) {
@@ -700,12 +710,12 @@ export class SalesService {
       const expirationDateQr =
         this.parseOptionalDate(qrData.fechaVencimientoQR) ??
         this.buildDefaultQrExpiration();
+      await this.saveTemporaryQrImage(qrId, qrImage);
 
       await this.qrPaymentSaleRepository.save(
         this.qrPaymentSaleRepository.create({
           personId: validation.personId,
           qrId,
-          qrImage,
           dataResponse: {
             personId: validation.personId,
             receptionist: validation.receptionist,
@@ -772,6 +782,8 @@ export class SalesService {
         customer: string | null;
         identityCardCustomer: string | null;
         paymentLocationId: number | null;
+        receiptNumber: string | null;
+        description: string | null;
         paymentTypeId: number;
         paymentTypeState: PaymentTypeState;
         depositDate: Date | null;
@@ -781,7 +793,6 @@ export class SalesService {
         id: number;
         voucherId: number;
         bcbQrId: string;
-        qrImage: string;
         qrResponse: Record<string, unknown>;
       } | null;
       saleProducts: {
@@ -827,6 +838,8 @@ export class SalesService {
           identityCardCustomer:
             data.voucher.identityCardCustomer.trim() || null,
           paymentLocationId: data.voucher.paymentLocationId,
+          receiptNumber: data.voucher.receiptNumber?.trim() || null,
+          description: data.voucher.description?.trim() || null,
           depositDate:
             this.parseOptionalDate(data.voucher.depositDate) ?? new Date(),
         },
@@ -845,6 +858,8 @@ export class SalesService {
       customer: string | null;
       identityCardCustomer: string | null;
       paymentLocationId: number | null;
+      receiptNumber?: string | null;
+      description?: string | null;
       depositDate: Date | null;
     };
     transactionId?: string | null;
@@ -902,6 +917,8 @@ export class SalesService {
           customer: voucher.customer,
           identityCardCustomer: voucher.identityCardCustomer,
           paymentLocationId: voucher.paymentLocationId,
+          receiptNumber: voucher.receiptNumber ?? null,
+          description: voucher.description ?? null,
           paymentType: validation.paymentType,
           paymentTypeState: PaymentTypeState.PAGADO,
           depositDate: voucher.depositDate,
@@ -987,6 +1004,8 @@ export class SalesService {
           customer: createdSale.voucher.customer,
           identityCardCustomer: createdSale.voucher.identityCardCustomer,
           paymentLocationId: createdSale.voucher.paymentLocationId,
+          receiptNumber: createdSale.voucher.receiptNumber,
+          description: createdSale.voucher.description,
           paymentTypeId: validation.paymentTypeId,
           paymentTypeState: createdSale.voucher.paymentTypeState,
           depositDate: createdSale.voucher.depositDate,
@@ -997,7 +1016,6 @@ export class SalesService {
               id: createdSale.qrPayment.id,
               voucherId: createdSale.voucher.id,
               bcbQrId: createdSale.qrPayment.qrId,
-              qrImage: createdSale.qrPayment.qrImage,
               qrResponse: createdSale.qrPayment.dataResponse,
             }
           : null,
@@ -1047,9 +1065,18 @@ export class SalesService {
       const qrStatus = this.resolveQrPaymentStatus(response, qrPayment);
 
       if (qrPayment) {
-        qrPayment.qrStatus = qrStatus;
+        if (qrStatus === QrPaymentStatus.EXPIRADO) {
+          await this.removeTemporaryQrImage(qrId);
+          await this.qrPaymentSaleRepository.delete({ id: qrPayment.id });
+        } else {
+          qrPayment.qrStatus = qrStatus;
 
-        await this.qrPaymentSaleRepository.save(qrPayment);
+          await this.qrPaymentSaleRepository.save(qrPayment);
+
+          if (qrStatus !== QrPaymentStatus.PENDIENTE) {
+            await this.removeTemporaryQrImage(qrId);
+          }
+        }
       }
 
       return {
@@ -1117,6 +1144,10 @@ export class SalesService {
 
         await this.qrPaymentSaleRepository.save(qrPayment);
 
+        if (qrStatus !== QrPaymentStatus.PENDIENTE) {
+          await this.removeTemporaryQrImage(qrId);
+        }
+
         return {
           error: false,
           message:
@@ -1132,6 +1163,8 @@ export class SalesService {
       }
 
       if (qrPayment.qrStatus === QrPaymentStatus.PAGADO) {
+        await this.removeTemporaryQrImage(qrId);
+
         return {
           error: false,
           message: 'La notificación BCB ya fue procesada anteriormente.',
@@ -1156,6 +1189,7 @@ export class SalesService {
           lastBcbNotification: notification,
         });
         await this.qrPaymentSaleRepository.save(qrPayment);
+        await this.removeTemporaryQrImage(qrId);
 
         return {
           error: false,
@@ -1210,6 +1244,8 @@ export class SalesService {
           customer: notification?.nombreOriginante?.trim() || null,
           identityCardCustomer: notification?.ciNitOriginante?.trim() || null,
           paymentLocationId: null,
+          receiptNumber: null,
+          description: null,
           depositDate:
             this.extractDepositDateFromBcbNotification(notification) ??
             new Date(),
@@ -1219,6 +1255,7 @@ export class SalesService {
           lastBcbNotification: notification,
         }),
       });
+      await this.removeTemporaryQrImage(qrId);
 
       return {
         error: false,
@@ -1444,6 +1481,8 @@ export class SalesService {
                 customer: voucher.customer,
                 identityCardCustomer: voucher.identityCardCustomer,
                 paymentLocationId: voucher.paymentLocationId,
+                receiptNumber: voucher.receiptNumber,
+                description: voucher.description,
                 paymentLocationName:
                   voucher.paymentLocationId === null
                     ? null
@@ -1486,7 +1525,7 @@ export class SalesService {
     }
   }
 
-  async salesPendingReportByPerson(personId: number) {
+  async personPendingReport(personId: number) {
     try {
       if (!Number.isInteger(personId) || personId <= 0) {
         return {
@@ -1495,6 +1534,8 @@ export class SalesService {
           data: null,
         };
       }
+
+      await this.deleteExpiredPendingQrPayments(personId);
 
       const qrPayments = await this.qrPaymentSaleRepository.find({
         where: {
@@ -1508,17 +1549,27 @@ export class SalesService {
         },
       });
 
-      const data = qrPayments.map((qrPayment) => ({
-        id: qrPayment.id,
-        personId: qrPayment.personId,
-        qrId: qrPayment.qrId,
-        qrImage: qrPayment.qrImage,
-        dataResponse: qrPayment.dataResponse,
-        qrStatus: qrPayment.qrStatus,
-        expirationDateQr: qrPayment.expirationDateQr,
-        createdAt: qrPayment.createdAt,
-        updatedAt: qrPayment.updatedAt,
-      }));
+      if (qrPayments.length === 0) {
+        return {
+          error: false,
+          message: 'La persona no tiene QR pendientes vigentes.',
+          data: [],
+        };
+      }
+
+      const data = await Promise.all(
+        qrPayments.map(async (qrPayment) => ({
+          id: qrPayment.id,
+          personId: qrPayment.personId,
+          qrId: qrPayment.qrId,
+          qrImage: await this.getTemporaryQrImage(qrPayment.qrId),
+          dataResponse: qrPayment.dataResponse,
+          qrStatus: qrPayment.qrStatus,
+          expirationDateQr: qrPayment.expirationDateQr,
+          createdAt: qrPayment.createdAt,
+          updatedAt: qrPayment.updatedAt,
+        })),
+      );
 
       return {
         error: false,
@@ -1526,7 +1577,7 @@ export class SalesService {
         data,
       };
     } catch (error) {
-      this.logError('Error en salesPendingReportByPerson', error);
+      this.logError('Error en personPendingReport', error);
 
       return {
         error: true,
@@ -1534,6 +1585,76 @@ export class SalesService {
         data: null,
       };
     }
+  }
+
+  private async saveTemporaryQrImage(
+    qrId: string,
+    qrImage: string,
+  ): Promise<void> {
+    const response = await this.nats.firstValue('ftp.saveDataTmp', {
+      path: this.qrTempPath,
+      name: this.buildQrImageTmpName(qrId),
+      data: { qrImage },
+    });
+
+    if (!response?.serviceStatus || response?.statusSaved !== true) {
+      throw new Error('No se pudo guardar la imagen QR temporal.');
+    }
+  }
+
+  private async getTemporaryQrImage(qrId: string): Promise<string | null> {
+    const response = await this.nats.firstValue('ftp.getDataTmp', {
+      path: this.qrTempPath,
+      name: this.buildQrImageTmpName(qrId),
+    });
+    const qrImage = response?.qrImage;
+
+    return typeof qrImage === 'string' && qrImage.length > 0 ? qrImage : null;
+  }
+
+  private async removeTemporaryQrImage(qrId: string): Promise<void> {
+    const response = await this.nats.firstValue('ftp.removeDataTmp', {
+      path: this.qrTempPath,
+      name: this.buildQrImageTmpName(qrId),
+    });
+
+    if (!response?.serviceStatus || response?.statusRemoved !== true) {
+      this.logger.warn(`No se pudo eliminar la imagen QR temporal ${qrId}`);
+    }
+  }
+
+  private buildQrImageTmpName(qrId: string): string {
+    return `${encodeURIComponent(qrId)}.json`;
+  }
+
+  private async deleteExpiredPendingQrPayments(
+    personId?: number,
+  ): Promise<void> {
+    const where = {
+      ...(personId ? { personId } : {}),
+      qrStatus: QrPaymentStatus.PENDIENTE,
+      expirationDateQr: LessThan(new Date()),
+    };
+    const expiredQrPayments = await this.qrPaymentSaleRepository.find({
+      where,
+      select: {
+        id: true,
+        qrId: true,
+      },
+    });
+
+    if (expiredQrPayments.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      expiredQrPayments.map((qrPayment) =>
+        this.removeTemporaryQrImage(qrPayment.qrId),
+      ),
+    );
+    await this.qrPaymentSaleRepository.delete(
+      expiredQrPayments.map((qrPayment) => qrPayment.id),
+    );
   }
 
   private extractQrIdFromBcbNotification(notification: any): string {

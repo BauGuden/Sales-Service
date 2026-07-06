@@ -83,8 +83,8 @@ export class SalesController {
     return this.salesService.personSales(personId);
   }
 
-  @MessagePattern('sales.salesPendingReportByPerson')
-  async salesPendingReportByPerson(@Payload('personId') personId: number) {
-    return this.salesService.salesPendingReportByPerson(personId);
+  @MessagePattern('sales.personPendingReport')
+  async personPendingReport(@Payload('personId') personId: number) {
+    return this.salesService.personPendingReport(personId);
   }
 }

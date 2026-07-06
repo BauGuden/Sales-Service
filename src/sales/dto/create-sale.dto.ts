@@ -6,6 +6,7 @@ import {
   IsInt,
   IsNotEmpty,
   IsNumberString,
+  IsOptional,
   IsPositive,
   IsString,
   MaxLength,
@@ -49,6 +50,16 @@ export class saleVoucherDto {
   @IsInt()
   @IsPositive()
   paymentLocationId: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  receiptNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  description?: string;
 
   @IsDateString()
   depositDate: string;
