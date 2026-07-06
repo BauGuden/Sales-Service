@@ -35,6 +35,12 @@ export class Voucher {
   @Column({ name: 'payment_location_id', type: 'int', nullable: true })
   paymentLocationId: number | null;
 
+  @Column({ name: 'receipt_number', length: 50, nullable: true })
+  receiptNumber: string | null;
+
+  @Column({ length: 255, nullable: true })
+  description: string | null;
+
   @ManyToOne(() => PaymentType, (paymentType) => paymentType.vouchers, {
     nullable: false,
   })

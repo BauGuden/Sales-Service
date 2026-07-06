@@ -595,6 +595,18 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             isNullable: true,
           },
           {
+            name: 'receipt_number',
+            type: 'varchar',
+            length: '50',
+            isNullable: true,
+          },
+          {
+            name: 'description',
+            type: 'varchar',
+            length: '255',
+            isNullable: true,
+          },
+          {
             name: 'payment_type_id',
             type: 'int',
             isNullable: false,

@@ -781,6 +781,8 @@ export class SalesService {
         customer: string | null;
         identityCardCustomer: string | null;
         paymentLocationId: number | null;
+        receiptNumber: string | null;
+        description: string | null;
         paymentTypeId: number;
         paymentTypeState: PaymentTypeState;
         depositDate: Date | null;
@@ -835,6 +837,8 @@ export class SalesService {
           identityCardCustomer:
             data.voucher.identityCardCustomer.trim() || null,
           paymentLocationId: data.voucher.paymentLocationId,
+          receiptNumber: data.voucher.receiptNumber?.trim() || null,
+          description: data.voucher.description?.trim() || null,
           depositDate:
             this.parseOptionalDate(data.voucher.depositDate) ?? new Date(),
         },
@@ -853,6 +857,8 @@ export class SalesService {
       customer: string | null;
       identityCardCustomer: string | null;
       paymentLocationId: number | null;
+      receiptNumber?: string | null;
+      description?: string | null;
       depositDate: Date | null;
     };
     transactionId?: string | null;
@@ -910,6 +916,8 @@ export class SalesService {
           customer: voucher.customer,
           identityCardCustomer: voucher.identityCardCustomer,
           paymentLocationId: voucher.paymentLocationId,
+          receiptNumber: voucher.receiptNumber ?? null,
+          description: voucher.description ?? null,
           paymentType: validation.paymentType,
           paymentTypeState: PaymentTypeState.PAGADO,
           depositDate: voucher.depositDate,
@@ -995,6 +1003,8 @@ export class SalesService {
           customer: createdSale.voucher.customer,
           identityCardCustomer: createdSale.voucher.identityCardCustomer,
           paymentLocationId: createdSale.voucher.paymentLocationId,
+          receiptNumber: createdSale.voucher.receiptNumber,
+          description: createdSale.voucher.description,
           paymentTypeId: validation.paymentTypeId,
           paymentTypeState: createdSale.voucher.paymentTypeState,
           depositDate: createdSale.voucher.depositDate,
@@ -1233,6 +1243,8 @@ export class SalesService {
           customer: notification?.nombreOriginante?.trim() || null,
           identityCardCustomer: notification?.ciNitOriginante?.trim() || null,
           paymentLocationId: null,
+          receiptNumber: null,
+          description: null,
           depositDate:
             this.extractDepositDateFromBcbNotification(notification) ??
             new Date(),
@@ -1468,6 +1480,8 @@ export class SalesService {
                 customer: voucher.customer,
                 identityCardCustomer: voucher.identityCardCustomer,
                 paymentLocationId: voucher.paymentLocationId,
+                receiptNumber: voucher.receiptNumber,
+                description: voucher.description,
                 paymentLocationName:
                   voucher.paymentLocationId === null
                     ? null
