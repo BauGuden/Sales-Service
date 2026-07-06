@@ -460,30 +460,10 @@ export class SalesService {
         };
       }
 
-      const {
-        id,
-        firstName,
-        secondName,
-        lastName,
-        mothersLastName,
-        identityCard,
-        nup,
-        features,
-      } = person;
-
       return {
         error: false,
         message: 'Datos de la persona obtenidos correctamente',
-        data: {
-          id,
-          uuidColumn: personUuid,
-          fullName: [firstName, secondName, lastName, mothersLastName]
-            .filter(Boolean)
-            .join(' '),
-          identityCard: identityCard ?? '',
-          nup: nup ?? null,
-          isPolice: features?.isPolice ?? false,
-        },
+        data: this.mapPersonForCreatingSale(person, personUuid),
       };
     } catch (error) {
       this.logError('Error en personDetails', error);
@@ -504,10 +484,32 @@ export class SalesService {
         };
       }
 
-      const personResponse = await this.nats.firstValue('person.findOne', {
-        term: String(personId),
-        field: 'id',
-      });
+      const personResponse = await this.nats.firstValue(
+        'person.findForCreatingSaleById',
+        {
+          id: personId,
+        },
+      );
+
+      if (personResponse?.serviceStatus === false) {
+        return {
+          error: true,
+          message:
+            'No se pudo validar la persona seleccionada. Intente nuevamente.',
+          data: null,
+        };
+      }
+
+      if (personResponse?.error) {
+        return {
+          error: true,
+          message:
+            personResponse.message ??
+            'No se pudo validar la persona seleccionada.',
+          data: null,
+        };
+      }
+
       const person = personResponse?.data ?? personResponse;
 
       if (!person) {
@@ -518,29 +520,10 @@ export class SalesService {
         };
       }
 
-      const affiliate = person.personAffiliates?.find(
-        (item: { type?: string; typeId?: number }) =>
-          item.type === 'affiliates',
-      );
-
       return {
         error: false,
         message: 'Datos de la persona obtenidos correctamente',
-        data: {
-          id: person.id,
-          uuidColumn: person.uuidColumn,
-          fullName: [
-            person.firstName,
-            person.secondName,
-            person.lastName,
-            person.mothersLastName,
-          ]
-            .filter(Boolean)
-            .join(' '),
-          identityCard: person.identityCard ?? '',
-          nup: affiliate?.typeId ?? null,
-          isPolice: Boolean(affiliate),
-        },
+        data: this.mapPersonForCreatingSale(person),
       };
     } catch (error) {
       this.logError('Error en personDetailsById', error);
@@ -551,6 +534,33 @@ export class SalesService {
         data: null,
       };
     }
+  }
+
+  private mapPersonForCreatingSale(
+    person: any,
+    uuidColumn?: string,
+  ): PersonForCreatingSaleDataDto {
+    const affiliate = person.personAffiliates?.find(
+      (item: { type?: string; typeId?: number }) => item.type === 'affiliates',
+    );
+
+    return {
+      id: person.id,
+      uuidColumn: uuidColumn ?? person.uuidColumn,
+      fullName:
+        person.fullName ??
+        [
+          person.firstName,
+          person.secondName,
+          person.lastName,
+          person.mothersLastName,
+        ]
+          .filter(Boolean)
+          .join(' '),
+      identityCard: person.identityCard ?? '',
+      nup: person.nup ?? affiliate?.typeId ?? null,
+      isPolice: person.features?.isPolice ?? Boolean(affiliate),
+    };
   }
 
   async forCreatingSale(personUuid: string): Promise<{
@@ -857,8 +867,7 @@ export class SalesService {
     return this.dataSource.transaction(async (manager) => {
       const saleState = SaleState.VIGENTE;
       const code =
-        saleState === SaleState.VIGENTE &&
-        this.isManualPaymentType(validation.paymentType)
+        saleState === SaleState.VIGENTE
           ? await this.generateNextSaleCode(manager)
           : null;
 
@@ -1227,6 +1236,82 @@ export class SalesService {
     }
   }
 
+  // Borrar despues de las pruebas
+  async processBcbPaymentNotificationPrueba(data: GetQrCodeStatusDto) {
+    const qrId = data.qrId.trim();
+    const qrPayment = await this.qrPaymentSaleRepository.findOne({
+      where: { qrId },
+    });
+
+    if (!qrPayment) {
+      return {
+        error: true,
+        message: 'No se encontró un QR generado con el id enviado.',
+        data: { qrId },
+      };
+    }
+
+    const salePayload = this.buildSalePayloadFromQrPayment(qrPayment);
+
+    if (!salePayload) {
+      return {
+        error: true,
+        message:
+          'El QR no tiene los datos originales necesarios para simular el pago.',
+        data: { qrId },
+      };
+    }
+
+    const personResult = await this.personDetailsById(salePayload.personId);
+
+    if (personResult.error || !personResult.data) {
+      return {
+        error: true,
+        message:
+          personResult.message ??
+          'No se pudieron obtener los datos de la persona del QR.',
+        data: { qrId, personId: salePayload.personId },
+      };
+    }
+
+    const amount = salePayload.saleProducts.reduce(
+      (total, product) =>
+        total + Number(product.price) * Number(product.amount),
+      0,
+    );
+    const now = new Date();
+    const notification = {
+      idQR: qrId,
+      idOrdenDestinatario: `SIM${now.getTime()}`,
+      eif: 'SIMULADO',
+      ciNitOriginante: personResult.data.identityCard,
+      nombreOriginante: personResult.data.fullName,
+      codMoneda: 'BOB',
+      importe: Number(amount.toFixed(2)),
+      cuentaOrigen: 'SIMULADA',
+      eifOrigen: 'SIMULADO',
+      tipoNotificacion: 'T1',
+      estado: 'PROCESADO',
+      fechaPago: now.toISOString(),
+      metaData: {
+        simulated: true,
+        personId: salePayload.personId,
+      },
+    };
+
+    return this.processBcbPaymentNotification({
+      notification,
+      bcbValidation: {
+        finalizado: true,
+        serviceStatus: true,
+        statusValidation: {
+          isPaid: true,
+          simulated: true,
+        },
+      },
+    });
+  }
+
   async personSales(personId: number) {
     try {
       if (!Number.isInteger(personId) || personId <= 0) {
@@ -1382,12 +1467,10 @@ export class SalesService {
             ? {
                 id: qrPayment.id,
                 qrId: qrPayment.qrId,
-                qrImage: qrPayment.qrImage,
                 dataResponse: qrPayment.dataResponse,
                 qrStatus: qrPayment.qrStatus,
                 expirationDateQr: qrPayment.expirationDateQr,
                 createdAt: qrPayment.createdAt,
-                updatedAt: qrPayment.updatedAt,
               }
             : null,
         };
@@ -1515,6 +1598,7 @@ export class SalesService {
     };
   }
 
+  // lectura JSON de qrPayment.dataResponse
   private buildSalePayloadFromQrPayment(
     qrPayment: QrPaymentSale,
   ): GenerateQrDto | null {
