@@ -1613,9 +1613,14 @@ export class SalesService {
   }
 
   private async removeTemporaryQrImage(qrId: string): Promise<void> {
-    this.logger.debug(
-      `QR temporal ${qrId} queda gestionado por TTL de ftp.saveDataTmp`,
-    );
+    const response = await this.nats.firstValue('ftp.removeDataTmp', {
+      path: this.qrTempPath,
+      name: this.buildQrImageTmpName(qrId),
+    });
+
+    if (!response?.serviceStatus || response?.statusRemoved !== true) {
+      this.logger.warn(`No se pudo eliminar la imagen QR temporal ${qrId}`);
+    }
   }
 
   private buildQrImageTmpName(qrId: string): string {
