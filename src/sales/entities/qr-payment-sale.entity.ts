@@ -25,9 +25,6 @@ export class QrPaymentSale {
   @Column({ name: 'qr_id', length: 50 })
   qrId: string;
 
-  @Column({ name: 'qr_image', type: 'text' })
-  qrImage: string;
-
   @Column({ name: 'data_response', type: 'jsonb' })
   dataResponse: Record<string, unknown>;
 

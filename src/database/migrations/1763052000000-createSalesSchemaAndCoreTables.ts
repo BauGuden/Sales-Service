@@ -658,7 +658,9 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
     ]);
   }
 
-  private async createQrPaymentSalesTable(queryRunner: QueryRunner): Promise<void> {
+  private async createQrPaymentSalesTable(
+    queryRunner: QueryRunner,
+  ): Promise<void> {
     if (await queryRunner.hasTable(`${this.schema}.qr_payment_sales`)) {
       return;
     }
@@ -688,11 +690,6 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             isUnique: true,
           },
           {
-            name: 'qr_image',
-            type: 'text',
-            isNullable: false,
-          },
-          {
             name: 'data_response',
             type: 'jsonb',
             isNullable: false,
@@ -701,7 +698,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             name: 'qr_status',
             type: 'enum',
             enumName: 'qr_status_enum',
-            enum: ['PENDIENTE','PAGADO','RECHAZADO','EXPIRADO'],
+            enum: ['PENDIENTE', 'PAGADO', 'RECHAZADO', 'EXPIRADO'],
             default: "'PENDIENTE'",
           },
           {
