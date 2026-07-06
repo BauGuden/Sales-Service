@@ -70,6 +70,14 @@ export class SalesController {
     return this.salesService.processBcbPaymentNotification(data);
   }
 
+  // Borrar despues de las pruebas
+  @MessagePattern('sales.bcbPaymentNotificationPrueba')
+  async processBcbPaymentNotificationPrueba(
+    @Payload() data: GetQrCodeStatusDto,
+  ) {
+    return this.salesService.processBcbPaymentNotificationPrueba(data);
+  }
+
   @MessagePattern('sales.personSales')
   async personSales(@Payload('personId') personId: number) {
     return this.salesService.personSales(personId);

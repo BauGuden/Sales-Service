@@ -490,6 +490,7 @@ export class SalesService {
     }
   }
 
+  // Funcion por ANALIZAR
   private async personDetailsById(personId: number): Promise<{
     error: boolean;
     message: string;
@@ -857,8 +858,7 @@ export class SalesService {
     return this.dataSource.transaction(async (manager) => {
       const saleState = SaleState.VIGENTE;
       const code =
-        saleState === SaleState.VIGENTE &&
-        this.isManualPaymentType(validation.paymentType)
+        saleState === SaleState.VIGENTE
           ? await this.generateNextSaleCode(manager)
           : null;
 
@@ -1227,6 +1227,82 @@ export class SalesService {
     }
   }
 
+  // Borrar despues de las pruebas
+  async processBcbPaymentNotificationPrueba(data: GetQrCodeStatusDto) {
+    const qrId = data.qrId.trim();
+    const qrPayment = await this.qrPaymentSaleRepository.findOne({
+      where: { qrId },
+    });
+
+    if (!qrPayment) {
+      return {
+        error: true,
+        message: 'No se encontró un QR generado con el id enviado.',
+        data: { qrId },
+      };
+    }
+
+    const salePayload = this.buildSalePayloadFromQrPayment(qrPayment);
+
+    if (!salePayload) {
+      return {
+        error: true,
+        message:
+          'El QR no tiene los datos originales necesarios para simular el pago.',
+        data: { qrId },
+      };
+    }
+
+    const personResult = await this.personDetailsById(salePayload.personId);
+
+    if (personResult.error || !personResult.data) {
+      return {
+        error: true,
+        message:
+          personResult.message ??
+          'No se pudieron obtener los datos de la persona del QR.',
+        data: { qrId, personId: salePayload.personId },
+      };
+    }
+
+    const amount = salePayload.saleProducts.reduce(
+      (total, product) =>
+        total + Number(product.price) * Number(product.amount),
+      0,
+    );
+    const now = new Date();
+    const notification = {
+      idQR: qrId,
+      idOrdenDestinatario: `SIM${now.getTime()}`,
+      eif: 'SIMULADO',
+      ciNitOriginante: personResult.data.identityCard,
+      nombreOriginante: personResult.data.fullName,
+      codMoneda: 'BOB',
+      importe: Number(amount.toFixed(2)),
+      cuentaOrigen: 'SIMULADA',
+      eifOrigen: 'SIMULADO',
+      tipoNotificacion: 'T1',
+      estado: 'PROCESADO',
+      fechaPago: now.toISOString(),
+      metaData: {
+        simulated: true,
+        personId: salePayload.personId,
+      },
+    };
+
+    return this.processBcbPaymentNotification({
+      notification,
+      bcbValidation: {
+        finalizado: true,
+        serviceStatus: true,
+        statusValidation: {
+          isPaid: true,
+          simulated: true,
+        },
+      },
+    });
+  }
+
   async personSales(personId: number) {
     try {
       if (!Number.isInteger(personId) || personId <= 0) {
@@ -1382,12 +1458,10 @@ export class SalesService {
             ? {
                 id: qrPayment.id,
                 qrId: qrPayment.qrId,
-                qrImage: qrPayment.qrImage,
                 dataResponse: qrPayment.dataResponse,
                 qrStatus: qrPayment.qrStatus,
                 expirationDateQr: qrPayment.expirationDateQr,
                 createdAt: qrPayment.createdAt,
-                updatedAt: qrPayment.updatedAt,
               }
             : null,
         };
