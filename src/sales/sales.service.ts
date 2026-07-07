@@ -1350,182 +1350,56 @@ export class SalesService {
   }
 
   async personSales(personId: number) {
-    try {
-      if (!Number.isInteger(personId) || personId <= 0) {
-        return {
-          error: true,
-          message: 'Debe enviar un personId válido.',
-          data: null,
-        };
-      }
-      const sales = await this.salesRepository.find({
-        where: {
-          personId,
+    const sales = await this.salesRepository.find({
+      select: {
+        id: true,
+        code: true,
+        saleState: true,
+        personId: true,
+        receptionist: true,
+        createdAt: true,
+        saleProducts: {
+          id: true,
+          name: true,
+          amount: true,
         },
-        relations: {
-          saleProducts: {
-            product: true,
-          },
-          vouchers: {
-            paymentType: true,
+        voucher: {
+          id: true,
+          total: true,
+          customer: true,
+          identityCardCustomer: true,
+          depositDate: true,
+          paymentType: {
+            id: true,
+            name: true,
           },
         },
-        order: {
-          createdAt: 'DESC',
-          id: 'DESC',
+      },
+      where: {
+        personId,
+      },
+      relations: {
+        saleProducts: true,
+        voucher: {
+          paymentType: true,
         },
-      });
+      },
+      order: {
+        createdAt: 'DESC',
+        id: 'DESC',
+      },
+    });
 
-      if (sales.length === 0) {
-        return {
-          error: false,
-          message: 'La persona no tiene ventas registradas.',
-          data: [],
-        };
-      }
+    
 
-      const saleIds = new Set(sales.map((sale) => sale.id));
-      const paymentLocationIds = [
-        ...new Set(
-          sales
-            .flatMap((sale) => sale.vouchers ?? [])
-            .map((voucher) => voucher.paymentLocationId)
-            .filter(
-              (id): id is number => Number.isInteger(id) && Number(id) > 0,
-            ),
-        ),
-      ];
-
-      const [paidQrPayments, paymentLocations] = await Promise.all([
-        this.qrPaymentSaleRepository.find({
-          where: {
-            personId,
-            qrStatus: QrPaymentStatus.PAGADO,
-          },
-          order: {
-            createdAt: 'DESC',
-          },
-        }),
-        Promise.all(
-          paymentLocationIds.map(async (id) => {
-            const response = await this.nats.firstValue(
-              'financialEntities.findOne',
-              { id },
-            );
-
-            if (
-              !response?.serviceStatus ||
-              typeof response.name !== 'string' ||
-              typeof response.code !== 'string'
-            ) {
-              return null;
-            }
-
-            return {
-              id,
-              name: response.name,
-              code: response.code,
-            };
-          }),
-        ),
-      ]);
-      const paymentLocationById = new Map(
-        paymentLocations
-          .filter(
-            (
-              paymentLocation,
-            ): paymentLocation is {
-              id: number;
-              name: string;
-              code: string;
-            } => paymentLocation !== null,
-          )
-          .map((paymentLocation) => [paymentLocation.id, paymentLocation]),
-      );
-      const qrPaymentBySaleId = new Map<number, QrPaymentSale>();
-
-      for (const qrPayment of paidQrPayments) {
-        const createdSaleId = Number(qrPayment.dataResponse?.createdSaleId);
-
-        if (
-          Number.isInteger(createdSaleId) &&
-          saleIds.has(createdSaleId) &&
-          !qrPaymentBySaleId.has(createdSaleId)
-        ) {
-          qrPaymentBySaleId.set(createdSaleId, qrPayment);
-        }
-      }
-
-      const data = sales.map((sale) => {
-        const voucher = sale.vouchers?.[0] ?? null;
-        const qrPayment = qrPaymentBySaleId.get(sale.id) ?? null;
-
-        return {
-          id: sale.id,
-          code: sale.code,
-          saleState: sale.saleState,
-          personId: sale.personId,
-          receptionist: sale.receptionist,
-          dateReception: sale.createdAt,
-          saleProducts: (sale.saleProducts ?? []).map((saleProduct) => ({
-            id: saleProduct.id,
-            productId: saleProduct.product?.id ?? null,
-            name: saleProduct.name,
-            price: Number(saleProduct.price),
-            amount: saleProduct.amount,
-            total: Number(saleProduct.total),
-          })),
-          voucher: voucher
-            ? {
-                id: voucher.id,
-                customer: voucher.customer,
-                identityCardCustomer: voucher.identityCardCustomer,
-                paymentLocationId: voucher.paymentLocationId,
-                receiptNumber: voucher.receiptNumber,
-                description: voucher.description,
-                paymentLocationName:
-                  voucher.paymentLocationId === null
-                    ? null
-                    : (paymentLocationById.get(voucher.paymentLocationId)
-                        ?.name ?? null),
-                paymentLocationCode:
-                  voucher.paymentLocationId === null
-                    ? null
-                    : (paymentLocationById.get(voucher.paymentLocationId)
-                        ?.code ?? null),
-                paymentTypeId: voucher.paymentType?.id ?? null,
-                paymentTypeName: voucher.paymentType?.name ?? null,
-                paymentTypeShortened: voucher.paymentType?.shortened ?? null,
-                paymentTypeState: voucher.paymentTypeState,
-                depositDate: voucher.depositDate,
-                total: Number(voucher.total),
-                createdAt: voucher.createdAt,
-              }
-            : null,
-          qrPayment: qrPayment
-            ? {
-                id: qrPayment.id,
-                qrId: qrPayment.qrId,
-                dataResponse: qrPayment.dataResponse,
-                qrStatus: qrPayment.qrStatus,
-                expirationDateQr: qrPayment.expirationDateQr,
-                createdAt: qrPayment.createdAt,
-              }
-            : null,
-        };
-      });
-
-      return {
-        error: false,
-        message: 'Reporte de ventas obtenido correctamente.',
-        data,
-      };
-    } catch (error) {
-      this.logError('Error en mostrar ventas de la persona', error);
-    }
+    return {
+      error: false,
+      message: 'Registro de ventas obtenido correctamente.',
+      data: sales,
+    };
   }
 
-  async personPendingReport(personId: number) {
+  async personPendingQr(personId: number) {
     try {
       if (!Number.isInteger(personId) || personId <= 0) {
         return {

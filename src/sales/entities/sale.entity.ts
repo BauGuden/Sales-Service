@@ -12,6 +12,7 @@ import {
   JoinColumn,
   ManyToOne,
   OneToMany,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -60,8 +61,8 @@ export class Sale {
   @JoinColumn({ name: 'parameter_id' })
   parameter: Parameter;
 
-  @OneToMany(() => Voucher, (voucher) => voucher.sale)
-  vouchers: Voucher[];
+  @OneToOne(() => Voucher, (voucher) => voucher.sale)
+  voucher: Voucher[];
 
   @OneToMany(() => SaleProduct, (saleProduct) => saleProduct.sale, {
     cascade: true,

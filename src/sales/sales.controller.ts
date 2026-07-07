@@ -1,4 +1,4 @@
-import { Controller } from '@nestjs/common';
+import { Controller, ParseIntPipe } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { CreateSaleDto, GenerateQrDto, GetQrCodeStatusDto } from './dto';
 import { SalesService } from './sales.service';
@@ -79,12 +79,12 @@ export class SalesController {
   }
 
   @MessagePattern('sales.personSales')
-  async personSales(@Payload('personId') personId: number) {
+  async personSales(@Payload('personId', ParseIntPipe) personId: number) {
     return this.salesService.personSales(personId);
   }
 
-  @MessagePattern('sales.personPendingReport')
-  async personPendingReport(@Payload('personId') personId: number) {
-    return this.salesService.personPendingReport(personId);
+  @MessagePattern('sales.personPendingQr')
+  async personPendingQr(@Payload('personId', ParseIntPipe) personId: number) {
+    return this.salesService.personPendingQr(personId);
   }
 }

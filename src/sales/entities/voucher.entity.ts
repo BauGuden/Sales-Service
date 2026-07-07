@@ -11,6 +11,7 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -22,7 +23,7 @@ export class Voucher {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => Sale, (sale) => sale.vouchers, { nullable: false })
+  @OneToOne(() => Sale, (sale) => sale.voucher)
   @JoinColumn({ name: 'sale_id' })
   sale: Sale;
 
