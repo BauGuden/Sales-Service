@@ -33,8 +33,8 @@ export class Voucher {
   @Column({ name: 'identity_card_customer', length: 20, nullable: true })
   identityCardCustomer: string | null;
 
-  @Column({ name: 'payment_location_id', type: 'int', nullable: true })
-  paymentLocationId: number | null;
+  @Column({ name: 'payment_location', nullable: true })
+  paymentLocation: string | null;
 
   @Column({ name: 'receipt_number', length: 50, nullable: true })
   receiptNumber: string | null;

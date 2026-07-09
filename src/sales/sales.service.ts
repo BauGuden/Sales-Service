@@ -750,61 +750,7 @@ export class SalesService {
     }
   }
 
-  async createSale(data: CreateSaleDto): Promise<{
-    error: boolean;
-    message: string;
-    data: {
-      datosIngreso: {
-        personId: number;
-        receptionist: string;
-        paymentTypeId: number;
-        parameterId: number;
-        saleProducts: {
-          productId: number;
-          name: string;
-          code: string;
-          price: string;
-          amount: number;
-        }[];
-      };
-      sales: {
-        id: number;
-        code: string | null;
-        saleState: SaleState;
-        personId: number;
-        receptionist: string;
-        transactionId: string | null;
-        parameterId: number;
-      };
-      voucher: {
-        id: number;
-        saleId: number;
-        customer: string | null;
-        identityCardCustomer: string | null;
-        paymentLocationId: number | null;
-        receiptNumber: string | null;
-        description: string | null;
-        paymentTypeId: number;
-        paymentTypeState: PaymentTypeState;
-        depositDate: Date | null;
-        total: number;
-      };
-      qrPayment: {
-        id: number;
-        voucherId: number;
-        bcbQrId: string;
-        qrResponse: Record<string, unknown>;
-      } | null;
-      saleProducts: {
-        id: number;
-        productId: number;
-        name: string;
-        price: number;
-        amount: number;
-        total: number;
-      }[];
-    } | null;
-  }> {
+  async createSale(data: CreateSaleDto): Promise<any> {
     try {
       const validation = await this.validateSaleInput(data);
 
@@ -837,7 +783,7 @@ export class SalesService {
           customer: data.voucher.customer.trim() || null,
           identityCardCustomer:
             data.voucher.identityCardCustomer.trim() || null,
-          paymentLocationId: data.voucher.paymentLocationId,
+          paymentLocation: data.voucher.paymentLocation,
           receiptNumber: data.voucher.receiptNumber?.trim() || null,
           description: data.voucher.description?.trim() || null,
           depositDate:
@@ -857,7 +803,7 @@ export class SalesService {
     voucher: {
       customer: string | null;
       identityCardCustomer: string | null;
-      paymentLocationId: number | null;
+      paymentLocation: string | null;
       receiptNumber?: string | null;
       description?: string | null;
       depositDate: Date | null;
@@ -916,7 +862,7 @@ export class SalesService {
           sale,
           customer: voucher.customer,
           identityCardCustomer: voucher.identityCardCustomer,
-          paymentLocationId: voucher.paymentLocationId,
+          paymentLocation: voucher.paymentLocation,
           receiptNumber: voucher.receiptNumber ?? null,
           description: voucher.description ?? null,
           paymentType: validation.paymentType,
@@ -1003,7 +949,7 @@ export class SalesService {
           saleId: createdSale.sale.id,
           customer: createdSale.voucher.customer,
           identityCardCustomer: createdSale.voucher.identityCardCustomer,
-          paymentLocationId: createdSale.voucher.paymentLocationId,
+          paymentLocation: createdSale.voucher.paymentLocation,
           receiptNumber: createdSale.voucher.receiptNumber,
           description: createdSale.voucher.description,
           paymentTypeId: validation.paymentTypeId,
@@ -1243,7 +1189,7 @@ export class SalesService {
         voucher: {
           customer: notification?.nombreOriginante?.trim() || null,
           identityCardCustomer: notification?.ciNitOriginante?.trim() || null,
-          paymentLocationId: null,
+          paymentLocation: null,
           receiptNumber: null,
           description: null,
           depositDate:
