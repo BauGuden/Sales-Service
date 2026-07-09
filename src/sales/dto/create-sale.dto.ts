@@ -47,9 +47,10 @@ export class saleVoucherDto {
   @MaxLength(20)
   identityCardCustomer: string;
 
-  @IsInt()
-  @IsPositive()
-  paymentLocationId: number;
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  paymentLocation: string;
 
   @IsOptional()
   @IsString()
@@ -61,6 +62,7 @@ export class saleVoucherDto {
   @MaxLength(255)
   description?: string;
 
+  @IsOptional()
   @IsDateString()
   depositDate: string;
 }
