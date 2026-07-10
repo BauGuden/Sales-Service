@@ -87,4 +87,14 @@ export class SalesController {
   async personPendingQr(@Payload('personId', ParseIntPipe) personId: number) {
     return this.salesService.personPendingQr(personId);
   }
+
+  @MessagePattern('sales.getQrImage')
+  async getQrImage(@Payload('qrId') qrId: string) {
+    return this.salesService.getTemporaryQrImage(qrId);
+  }
+
+  @MessagePattern('sales.personSaleDetails')
+  async personSaleDetails(@Payload('saleId', ParseIntPipe) saleId: number) {
+    return this.salesService.personSaleDetails(saleId);
+  }
 }
