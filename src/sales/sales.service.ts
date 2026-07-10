@@ -1411,31 +1411,14 @@ export class SalesService {
     expirationDateQr: Date,
   ): Promise<void> {
     const ttlMs = Math.max(expirationDateQr.getTime() - Date.now(), 1);
-    const response = await this.nats.firstValue('ftp.saveDataTmpQr', {
+    const response = await this.nats.firstValue('ftp.saveDataTmp', {
       path: this.qrTempPath,
       name: this.buildQrImageTmpName(qrId),
       data: { qrImage },
       ttlMs,
     });
 
-    if (response?.serviceStatus && response?.statusSaved === true) {
-      return;
-    }
-
-    this.logger.warn(
-      'ftp.saveDataTmpQr no disponible. Se usara ftp.saveDataTmp con el TTL temporal por defecto.',
-    );
-
-    const fallbackResponse = await this.nats.firstValue('ftp.saveDataTmp', {
-      path: this.qrTempPath,
-      name: this.buildQrImageTmpName(qrId),
-      data: { qrImage },
-    });
-
-    if (
-      !fallbackResponse?.serviceStatus ||
-      fallbackResponse?.statusSaved !== true
-    ) {
+    if (!response?.serviceStatus || response?.statusSaved !== true) {
       throw new Error('No se pudo guardar la imagen QR temporal.');
     }
   }
