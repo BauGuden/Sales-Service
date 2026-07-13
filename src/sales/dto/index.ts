@@ -10,4 +10,5 @@ export { PersonForCreatingSaleDataDto } from './person-for-creating-sale-data.dt
 export { ProductDataDto } from './product-data.dto';
 export { BcbQrDataDto, GenerateQrDto, GetQrCodeStatusDto } from './qr-code.dto';
 export { SaleListItemDto, SaleListProductDto } from './sale-list-item.dto';
+export { SalesListDto, SalesListItemReportDto } from './sales-list.dto';
 export { SearchPersonDataDto } from './search-person-data.dto';
