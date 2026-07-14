@@ -1387,7 +1387,6 @@ export class SalesService {
           id: qrPayment.id,
           personId: qrPayment.personId,
           qrId: qrPayment.qrId,
-          qrImage: await this.getTemporaryQrImage(qrPayment.qrId),
           dataResponse: qrPayment.dataResponse,
           qrStatus: qrPayment.qrStatus,
           expirationDateQr: qrPayment.expirationDateQr,
