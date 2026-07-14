@@ -1,6 +1,11 @@
 import { Controller, ParseIntPipe } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-import { CreateSaleDto, GenerateQrDto, GetQrCodeStatusDto } from './dto';
+import {
+  CreateSaleDto,
+  GenerateQrDto,
+  GetQrCodeStatusDto,
+  SalesListDto,
+} from './dto';
 import { SalesService } from './sales.service';
 
 @Controller()
@@ -96,5 +101,10 @@ export class SalesController {
   @MessagePattern('sales.personSaleDetails')
   async personSaleDetails(@Payload('saleId', ParseIntPipe) saleId: number) {
     return this.salesService.personSaleDetails(saleId);
+  }
+
+  @MessagePattern('sales.list')
+  async salesList(@Payload() filters: SalesListDto) {
+    return this.salesService.salesList(filters);
   }
 }

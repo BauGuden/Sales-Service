@@ -2,11 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
 import {
+  Between,
   DataSource,
   EntityManager,
   In,
   LessThan,
+  LessThanOrEqual,
   MoreThan,
+  MoreThanOrEqual,
   Repository,
 } from 'typeorm';
 import {
@@ -37,6 +40,8 @@ import {
   PersonForCreatingSaleDataDto,
   ProductDataDto,
   SearchPersonDataDto,
+  SalesListDto,
+  SalesListItemReportDto,
 } from './dto';
 
 @Injectable()
@@ -56,6 +61,8 @@ export class SalesService {
     private readonly parameterRepository: Repository<Parameter>,
     @InjectRepository(Sale)
     private readonly salesRepository: Repository<Sale>,
+    @InjectRepository(SaleProduct)
+    private readonly saleProductsRepository: Repository<SaleProduct>,
     @InjectRepository(QrPaymentSale)
     private readonly qrPaymentSaleRepository: Repository<QrPaymentSale>,
     private readonly dataSource: DataSource,
@@ -2338,6 +2345,157 @@ export class SalesService {
     };
   }
 
+  async salesList(filters: SalesListDto = {}): Promise<{
+    error: boolean;
+    message: string;
+    data: Record<string, unknown> | null;
+  }> {
+    const page = filters.page ?? 1;
+    const hasLimit = filters.limit !== undefined && filters.limit !== null;
+    const normalizedLimit = filters.limit ?? 0;
+    const dateRange = this.buildVoucherCreatedAtRange(
+      filters.dateFrom,
+      filters.dateTo,
+    );
+
+    const voucherCreatedAt = this.buildVoucherCreatedAtFindOperator(
+      dateRange.from,
+      dateRange.to,
+    );
+    const where = {
+      sale: {
+        saleState: SaleState.VIGENTE,
+        ...(voucherCreatedAt
+          ? {
+              voucher: {
+                createdAt: voucherCreatedAt,
+              },
+            }
+          : {}),
+      },
+    };
+
+    const [saleProducts, totalItems] =
+      await this.saleProductsRepository.findAndCount({
+        select: {
+          id: true,
+          name: true,
+          amount: true,
+          price: true,
+          total: true,
+          sale: {
+            id: true,
+            code: true,
+            saleState: true,
+            personId: true,
+            receptionist: true,
+            parameter: {
+              id: true,
+              currencySymbol: true,
+            },
+            voucher: {
+              id: true,
+              createdAt: true,
+              total: true,
+              paymentType: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        where,
+        relations: {
+          sale: {
+            parameter: true,
+            voucher: {
+              paymentType: true,
+            },
+          },
+        },
+        order: {
+          sale: {
+            voucher: {
+              createdAt: 'DESC',
+            },
+            id: 'DESC',
+          },
+          id: 'ASC',
+        },
+        ...(hasLimit
+          ? {
+              skip: (page - 1) * normalizedLimit,
+              take: normalizedLimit,
+            }
+          : {}),
+      });
+
+    const personIds = [
+      ...new Set(
+        saleProducts
+          .map((saleProduct) => saleProduct.sale?.personId)
+          .filter((personId) => Number.isInteger(Number(personId))),
+      ),
+    ];
+    const people = await Promise.all(
+      personIds.map((personId) => this.personDetailsById(Number(personId))),
+    );
+    const peopleById = new Map(
+      personIds.map((personId, index) => [Number(personId), people[index]]),
+    );
+
+    const items: SalesListItemReportDto[] = saleProducts.map((saleProduct) => {
+      const sale = saleProduct.sale;
+      const voucher = sale?.voucher as unknown as Voucher | null;
+      const personResult = peopleById.get(Number(sale?.personId));
+      const principalCustomer = personResult?.data?.fullName ?? '';
+
+      return {
+        code: sale?.code ?? null,
+        receptionDate: voucher?.createdAt ?? null,
+        principalCustomer,
+        service: saleProduct.name,
+        amount: Number(saleProduct.amount ?? 0),
+        price: this.formatAmount(saleProduct.price),
+        paymentType: voucher?.paymentType?.name ?? '',
+        total: `${this.formatAmount(voucher?.total ?? null)} ${
+          sale?.parameter?.currencySymbol ?? ''
+        }`.trim(),
+        receptionist: sale?.receptionist ?? '',
+      };
+    });
+
+    const data = {
+      sales: items,
+      totalItems,
+      pagination: hasLimit
+        ? {
+            page,
+            limit: normalizedLimit,
+            totalItems,
+            totalPages: Math.ceil(totalItems / normalizedLimit),
+            hasPreviousPage: page > 1,
+            hasNextPage: page * normalizedLimit < totalItems,
+          }
+        : null,
+      filters: {
+        dateFrom: dateRange.from?.toISOString() ?? null,
+        dateTo: dateRange.to?.toISOString() ?? null,
+      },
+      metadata: {
+        source: 'Sales-Service',
+        generatedFor: 'sales-list',
+        generatedAt: new Date().toISOString(),
+      },
+    };
+
+    return {
+      error: false,
+      message: 'Listado de ventas obtenido correctamente.',
+      data,
+    };
+  }
+
   private isThirdPartyPayer(
     principalIdentityCard: string | null,
     payerIdentityCard: string | null,
@@ -2358,5 +2516,89 @@ export class SalesService {
     const amount = Number(value ?? 0);
 
     return Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
+  }
+
+  private buildVoucherCreatedAtRange(
+    dateFrom?: string,
+    dateTo?: string,
+  ): {
+    error: boolean;
+    message: string;
+    from: Date | null;
+    to: Date | null;
+  } {
+    const from = this.parseReportDate(dateFrom, 'start');
+    const to = this.parseReportDate(dateTo, 'end');
+
+    if (dateFrom && !from) {
+      return {
+        error: true,
+        message: 'La fecha inicial no es válida.',
+        from: null,
+        to: null,
+      };
+    }
+
+    if (dateTo && !to) {
+      return {
+        error: true,
+        message: 'La fecha final no es válida.',
+        from: null,
+        to: null,
+      };
+    }
+
+    if (from && to && from.getTime() > to.getTime()) {
+      return {
+        error: true,
+        message: 'La fecha inicial no puede ser mayor a la fecha final.',
+        from: null,
+        to: null,
+      };
+    }
+
+    return {
+      error: false,
+      message: '',
+      from,
+      to,
+    };
+  }
+
+  private buildVoucherCreatedAtFindOperator(
+    from: Date | null,
+    to: Date | null,
+  ) {
+    if (from && to) {
+      return Between(from, to);
+    }
+
+    if (from) {
+      return MoreThanOrEqual(from);
+    }
+
+    if (to) {
+      return LessThanOrEqual(to);
+    }
+
+    return null;
+  }
+
+  private parseReportDate(
+    value: string | undefined,
+    boundary: 'start' | 'end',
+  ): Date | null {
+    if (!value) {
+      return null;
+    }
+
+    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? boundary === 'start'
+        ? `${value}T00:00:00.000-04:00`
+        : `${value}T23:59:59.999-04:00`
+      : value;
+    const date = new Date(normalized);
+
+    return Number.isNaN(date.getTime()) ? null : date;
   }
 }
