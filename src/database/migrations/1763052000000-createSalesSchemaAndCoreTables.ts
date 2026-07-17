@@ -42,14 +42,14 @@ const PRODUCTS = [
   },
   {
     id: 5,
-    name: 'Folder Préstamos Sector Activo',
+    name: 'Gastos Sector Activo',
     code: 'F-PA',
     price: 25,
     groupId: 1,
   },
   {
     id: 6,
-    name: 'Folder Préstamos Sector Pasivo',
+    name: 'Gastos Sector Pasivo',
     code: 'F-PP',
     price: 15,
     groupId: 1,
@@ -64,13 +64,7 @@ const PAYMENT_TYPES = [
     name: 'Depósito',
     description: 'Depósito Bancario',
     shortened: 'DEP',
-  },
-  {
-    id: 4,
-    name: 'Transferencia',
-    description: 'Transferencia entre Bancos',
-    shortened: 'TRANSF',
-  },
+  }
 ] as const;
 
 const PARAMETER = {

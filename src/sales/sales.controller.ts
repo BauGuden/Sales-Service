@@ -25,7 +25,7 @@ export class SalesController {
     return this.salesService.groups();
   }
 
-  @MessagePattern('sales.productsGroup')
+  @MessagePattern('sales.groupProducts')
   async productsGroup(@Payload('groupId') groupId: number) {
     return this.salesService.productsGroup(groupId);
   }
@@ -75,7 +75,6 @@ export class SalesController {
     return this.salesService.processBcbPaymentNotification(data);
   }
 
-  // Borrar despues de las pruebas
   @MessagePattern('sales.bcbPaymentNotificationPrueba')
   async processBcbPaymentNotificationPrueba(
     @Payload() data: GetQrCodeStatusDto,
@@ -93,14 +92,14 @@ export class SalesController {
     return this.salesService.personPendingQr(personId);
   }
 
-  @MessagePattern('sales.getQrImage')
+  @MessagePattern('sales.qrImage')
   async getQrImage(@Payload('qrId') qrId: string) {
     return this.salesService.getTemporaryQrImage(qrId);
-  }
+  } 
 
-  @MessagePattern('sales.personSaleDetails')
+  @MessagePattern('sales.voucherPdf')
   async personSaleDetails(@Payload('saleId', ParseIntPipe) saleId: number) {
-    return this.salesService.personSaleDetails(saleId);
+    return this.salesService.voucherPdf(saleId);
   }
 
   @MessagePattern('sales.list')
