@@ -8,7 +8,13 @@ export { FinancialEntitiesDto } from './financial-entities.dto';
 export { PaymentTypeDataDto } from './payment-type-data.dto';
 export { PersonForCreatingSaleDataDto } from './person-for-creating-sale-data.dto';
 export { ProductDataDto } from './product-data.dto';
-export { BcbQrDataDto, GenerateQrDto, GetQrCodeStatusDto } from './qr-code.dto';
+export {
+  BcbPaymentNotificationDto,
+  BcbQrDataDto,
+  GenerateQrDto,
+  GetQrCodeStatusDto,
+  ProcessBcbPaymentNotificationDto,
+} from './qr-code.dto';
 export { SaleListItemDto, SaleListProductDto } from './sale-list-item.dto';
 export { SalesListDto, SalesListItemReportDto } from './sales-list.dto';
 export { SearchPersonDataDto } from './search-person-data.dto';

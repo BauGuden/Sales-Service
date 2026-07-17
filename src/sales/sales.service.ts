@@ -38,6 +38,7 @@ import {
   ParameterDataDto,
   PaymentTypeDataDto,
   PersonForCreatingSaleDataDto,
+  ProcessBcbPaymentNotificationDto,
   ProductDataDto,
   SearchPersonDataDto,
   SalesListDto,
@@ -48,6 +49,7 @@ import {
 export class SalesService {
   private readonly logger = new Logger('SalesService');
   private readonly qrTempPath = 'temporalqr';
+  private readonly qrExpirationMinutes = 15;
 
   constructor(
     private readonly nats: NatsService,
@@ -654,7 +656,7 @@ export class SalesService {
     }
   }
 
-  async generateQr(data: GenerateQrDto): Promise<{
+  async generateQr(payload: GenerateQrDto): Promise<{
     error: boolean;
     message: string;
     data: {
@@ -674,7 +676,7 @@ export class SalesService {
     try {
       await this.deleteExpiredPendingQrPayments();
 
-      const validation = await this.validateSaleInput(data);
+      const validation = await this.validateSaleInput(payload);
 
       if (validation.error) {
         return validation;
@@ -708,8 +710,6 @@ export class SalesService {
           qrData,
           { id: null, personId: validation.personId },
           validation.saleTotal,
-          validation.normalizedProducts,
-          validation.person,
         ),
       );
       const qrId = String(generatedQr.datos.idQr);
@@ -728,38 +728,48 @@ export class SalesService {
             receptionist: validation.receptionist,
             paymentTypeId: validation.paymentTypeId,
             parameterId: validation.parameterId,
-            saleProducts: this.mapInputSaleProducts(data.saleProducts),
+            saleProducts: this.mapInputSaleProducts(payload.saleProducts),
+            total: validation.saleTotal,
+            currency: qrData.codMoneda,
           },
           qrStatus: QrPaymentStatus.PENDIENTE,
           expirationDateQr,
         }),
       );
 
+      const data = {
+        personId: validation.personId,
+        paymentTypeId: validation.paymentTypeId,
+        destinationAccount: qrData.destinationAccount,
+        accountNumber: qrData.accountNumber,
+        ctaDestino: qrData.ctaDestino,
+        fechaVencimientoQR: qrData.fechaVencimientoQR,
+        bcbQrId: qrId,
+        total: validation.saleTotal,
+        qrImage,
+        qrStatus: QrPaymentStatus.PENDIENTE,
+        expirationDateQr,
+      };
+
       return {
         error: false,
         message: 'QR generado correctamente',
-        data: {
-          personId: validation.personId,
-          paymentTypeId: validation.paymentTypeId,
-          destinationAccount: qrData.destinationAccount,
-          accountNumber: qrData.accountNumber,
-          ctaDestino: qrData.ctaDestino,
-          fechaVencimientoQR: qrData.fechaVencimientoQR,
-          bcbQrId: qrId,
-          total: validation.saleTotal,
-          qrImage,
-          qrStatus: QrPaymentStatus.PENDIENTE,
-          expirationDateQr,
-        },
+        data,
       };
     } catch (error) {
       this.logError('Error en la generación de QR', error);
+
+      return {
+        error: true,
+        message: 'Error al generar el QR.',
+        data: null,
+      };
     }
   }
 
-  async createSale(data: CreateSaleDto): Promise<any> {
+  async createSale(payload: CreateSaleDto): Promise<any> {
     try {
-      const validation = await this.validateSaleInput(data);
+      const validation = await this.validateSaleInput(payload);
 
       if (validation.error) {
         return validation;
@@ -784,23 +794,29 @@ export class SalesService {
       }
 
       const createdSale = await this.createSaleRecords({
-        data,
+        data: payload,
         validation,
         voucher: {
-          customer: data.voucher.customer.trim() || null,
+          customer: payload.voucher.customer.trim() || null,
           identityCardCustomer:
-            data.voucher.identityCardCustomer.trim() || null,
-          paymentLocation: data.voucher.paymentLocation,
-          receiptNumber: data.voucher.receiptNumber?.trim() || null,
-          description: data.voucher.description?.trim() || null,
+            payload.voucher.identityCardCustomer.trim() || null,
+          paymentLocation: payload.voucher.paymentLocation,
+          receiptNumber: payload.voucher.receiptNumber?.trim() || null,
+          description: payload.voucher.description?.trim() || null,
           depositDate:
-            this.parseOptionalDate(data.voucher.depositDate) ?? new Date(),
+            this.parseOptionalDate(payload.voucher.depositDate) ?? new Date(),
         },
       });
 
-      return this.buildCreateSaleResponse(data, validation, createdSale);
+      return this.buildCreateSaleResponse(payload, validation, createdSale);
     } catch (error) {
       this.logError('Error en la creación de venta', error);
+
+      return {
+        error: true,
+        message: 'Error al crear la venta.',
+        data: null,
+      };
     }
   }
 
@@ -817,7 +833,6 @@ export class SalesService {
     };
     transactionId?: string | null;
     qrPayment?: QrPaymentSale | null;
-    qrPaymentDataResponse?: Record<string, unknown>;
   }): Promise<{
     sale: Sale;
     saleProducts: SaleProduct[];
@@ -829,7 +844,6 @@ export class SalesService {
       voucher,
       transactionId = null,
       qrPayment = null,
-      qrPaymentDataResponse,
     } = params;
 
     return this.dataSource.transaction(async (manager) => {
@@ -884,8 +898,9 @@ export class SalesService {
       if (qrPayment) {
         qrPayment.qrStatus = QrPaymentStatus.PAGADO;
         qrPayment.dataResponse = {
-          ...(qrPaymentDataResponse ?? qrPayment.dataResponse),
-          createdSaleId: sale.id,
+          saleId: sale.id,
+          voucherId: savedVoucher.id,
+          saleProductIds: savedSaleProducts.map((saleProduct) => saleProduct.id),
         };
         savedQrPayment = await manager.save(QrPaymentSale, qrPayment);
       }
@@ -922,7 +937,7 @@ export class SalesService {
   }
 
   private buildCreateSaleResponse(
-    data: CreateSaleDto | GenerateQrDto,
+    payload: CreateSaleDto | GenerateQrDto,
     validation: any,
     createdSale: {
       sale: Sale;
@@ -931,60 +946,62 @@ export class SalesService {
       qrPayment: QrPaymentSale | null;
     },
   ) {
+    const data = {
+      datosIngreso: {
+        personId: validation.personId,
+        receptionist: validation.receptionist,
+        paymentTypeId: validation.paymentTypeId,
+        parameterId: validation.parameterId,
+        saleProducts: this.mapInputSaleProducts(payload.saleProducts),
+      },
+      sales: {
+        id: createdSale.sale.id,
+        code: createdSale.sale.code,
+        saleState: createdSale.sale.saleState,
+        personId: createdSale.sale.personId,
+        receptionist: createdSale.sale.receptionist,
+        transactionId: createdSale.sale.transactionId,
+        parameterId: validation.parameterId,
+      },
+      voucher: {
+        id: createdSale.voucher.id,
+        saleId: createdSale.sale.id,
+        customer: createdSale.voucher.customer,
+        identityCardCustomer: createdSale.voucher.identityCardCustomer,
+        paymentLocation: createdSale.voucher.paymentLocation,
+        receiptNumber: createdSale.voucher.receiptNumber,
+        description: createdSale.voucher.description,
+        paymentTypeId: validation.paymentTypeId,
+        paymentTypeState: createdSale.voucher.paymentTypeState,
+        depositDate: createdSale.voucher.depositDate,
+        total: Number(createdSale.voucher.total),
+      },
+      qrPayment: createdSale.qrPayment
+        ? {
+            id: createdSale.qrPayment.id,
+            voucherId: createdSale.voucher.id,
+            bcbQrId: createdSale.qrPayment.qrId,
+            qrResponse: createdSale.qrPayment.dataResponse,
+          }
+        : null,
+      saleProducts: createdSale.saleProducts.map((saleProduct) => ({
+        id: saleProduct.id,
+        productId: saleProduct.product.id,
+        name: saleProduct.name,
+        price: Number(saleProduct.price),
+        amount: saleProduct.amount,
+        total: Number(saleProduct.total),
+      })),
+    };
+
     return {
       error: false,
       message: 'Venta creada correctamente',
-      data: {
-        datosIngreso: {
-          personId: validation.personId,
-          receptionist: validation.receptionist,
-          paymentTypeId: validation.paymentTypeId,
-          parameterId: validation.parameterId,
-          saleProducts: this.mapInputSaleProducts(data.saleProducts),
-        },
-        sales: {
-          id: createdSale.sale.id,
-          code: createdSale.sale.code,
-          saleState: createdSale.sale.saleState,
-          personId: createdSale.sale.personId,
-          receptionist: createdSale.sale.receptionist,
-          transactionId: createdSale.sale.transactionId,
-          parameterId: validation.parameterId,
-        },
-        voucher: {
-          id: createdSale.voucher.id,
-          saleId: createdSale.sale.id,
-          customer: createdSale.voucher.customer,
-          identityCardCustomer: createdSale.voucher.identityCardCustomer,
-          paymentLocation: createdSale.voucher.paymentLocation,
-          receiptNumber: createdSale.voucher.receiptNumber,
-          description: createdSale.voucher.description,
-          paymentTypeId: validation.paymentTypeId,
-          paymentTypeState: createdSale.voucher.paymentTypeState,
-          depositDate: createdSale.voucher.depositDate,
-          total: Number(createdSale.voucher.total),
-        },
-        qrPayment: createdSale.qrPayment
-          ? {
-              id: createdSale.qrPayment.id,
-              voucherId: createdSale.voucher.id,
-              bcbQrId: createdSale.qrPayment.qrId,
-              qrResponse: createdSale.qrPayment.dataResponse,
-            }
-          : null,
-        saleProducts: createdSale.saleProducts.map((saleProduct) => ({
-          id: saleProduct.id,
-          productId: saleProduct.product.id,
-          name: saleProduct.name,
-          price: Number(saleProduct.price),
-          amount: saleProduct.amount,
-          total: Number(saleProduct.total),
-        })),
-      },
+      data,
     };
   }
 
-  async getQRCodeStatus(data: GetQrCodeStatusDto): Promise<{
+  async getQRCodeStatus(payload: GetQrCodeStatusDto): Promise<{
     error: boolean;
     message: string;
     data: {
@@ -994,10 +1011,11 @@ export class SalesService {
       qrStatus: QrPaymentStatus;
       statusValidation: Record<string, unknown> | null;
       bcbResponse: Record<string, unknown>;
+      saleProcessing: Record<string, unknown> | null;
     } | null;
   }> {
     try {
-      const qrId = data.qrId?.trim();
+      const qrId = payload.qrId?.trim();
 
       if (!qrId) {
         return {
@@ -1016,8 +1034,56 @@ export class SalesService {
         this.extractDepositDateFromQrStatus(response) ??
         (response?.statusValidation?.isPaid ? new Date() : null);
       const qrStatus = this.resolveQrPaymentStatus(response, qrPayment);
+      let saleProcessing: Record<string, unknown> | null = null;
 
-      if (qrPayment) {
+      if (qrStatus === QrPaymentStatus.PAGADO) {
+        const processedOrder = this.extractProcessedQrOrder(response);
+
+        if (!processedOrder) {
+          return {
+            error: true,
+            message:
+              'BCB reportó el QR como pagado, pero no devolvió la orden procesada.',
+            data: null,
+          };
+        }
+
+        const paymentResult = await this.processBcbPaymentNotification({
+          notification: {
+            ...processedOrder,
+            idQR: qrId,
+            eif: String(processedOrder.eif ?? 'BCB_STATUS_QUERY'),
+            codMoneda: String(processedOrder.codMoneda ?? ''),
+            estado: 'PROCESADO',
+            metaData:
+              processedOrder.metaData ?? response?.datos?.metaData ?? {},
+          },
+          bcbValidation: {
+            statusValidation: response?.statusValidation ?? null,
+            source: 'QR_STATUS_QUERY',
+          },
+        });
+
+        if (paymentResult.error) {
+          const data = {
+            qrId,
+            paymentTypeState: PaymentTypeState.PAGADO,
+            depositDate,
+            qrStatus,
+            statusValidation: response?.statusValidation ?? null,
+            bcbResponse: response,
+            saleProcessing: paymentResult.data,
+          };
+
+          return {
+            error: true,
+            message: paymentResult.message,
+            data,
+          };
+        }
+
+        saleProcessing = paymentResult.data;
+      } else if (qrPayment) {
         if (qrStatus === QrPaymentStatus.EXPIRADO) {
           await this.removeTemporaryQrImage(qrId);
           await this.qrPaymentSaleRepository.delete({ id: qrPayment.id });
@@ -1032,37 +1098,45 @@ export class SalesService {
         }
       }
 
+      const data = {
+        qrId,
+        paymentTypeState: response?.statusValidation?.isPaid
+          ? PaymentTypeState.PAGADO
+          : response?.statusValidation?.isRejected
+            ? PaymentTypeState.RECHAZADO
+            : null,
+        depositDate,
+        qrStatus,
+        statusValidation: response?.statusValidation ?? null,
+        bcbResponse: response,
+        saleProcessing,
+      };
+
       return {
         error: false,
         message: 'Estado del QR consultado correctamente',
-        data: {
-          qrId,
-          paymentTypeState: response?.statusValidation?.isPaid
-            ? PaymentTypeState.PAGADO
-            : response?.statusValidation?.isRejected
-              ? PaymentTypeState.RECHAZADO
-              : null,
-          depositDate,
-          qrStatus,
-          statusValidation: response?.statusValidation ?? null,
-          bcbResponse: response,
-        },
+        data,
       };
     } catch (error) {
       this.logError('Error al consultar el estado del QR', error);
+
+      return {
+        error: true,
+        message: 'Error al consultar el estado del QR.',
+        data: null,
+      };
     }
   }
 
-  async processBcbPaymentNotification(data: {
-    notification?: any;
-    bcbValidation?: any;
-  }): Promise<{
+  async processBcbPaymentNotification(
+    payload: ProcessBcbPaymentNotificationDto,
+  ): Promise<{
     error: boolean;
     message: string;
     data: Record<string, unknown> | null;
   }> {
     try {
-      const notification = data?.notification ?? data;
+      const notification = payload.notification;
       const qrId = this.extractQrIdFromBcbNotification(notification);
 
       if (!qrId) {
@@ -1078,10 +1152,31 @@ export class SalesService {
       });
 
       if (!qrPayment) {
+        const data = { qrId, notification };
+
         return {
           error: true,
           message: 'No se encontró un QR generado con el id notificado.',
-          data: { qrId, notification },
+          data,
+        };
+      }
+
+      const metadataValidationErrors = this.validateQrNotificationMetadata(
+        qrPayment,
+        notification.metaData,
+      );
+
+      if (metadataValidationErrors.length > 0) {
+        const data = {
+          qrId,
+          validationErrors: metadataValidationErrors,
+          metaData: notification.metaData,
+        };
+
+        return {
+          error: true,
+          message: 'La metadata BCB no corresponde al QR generado.',
+          data,
         };
       }
 
@@ -1091,9 +1186,6 @@ export class SalesService {
 
       if (qrStatus !== QrPaymentStatus.PAGADO) {
         qrPayment.qrStatus = qrStatus;
-        qrPayment.dataResponse = this.mergeQrPaymentDataResponse(qrPayment, {
-          lastBcbNotification: notification,
-        });
 
         await this.qrPaymentSaleRepository.save(qrPayment);
 
@@ -1101,31 +1193,53 @@ export class SalesService {
           await this.removeTemporaryQrImage(qrId);
         }
 
+        const data = {
+          qrId,
+          qrStatus,
+          notification,
+        };
+
         return {
           error: false,
           message:
             qrStatus === QrPaymentStatus.RECHAZADO
               ? 'QR rechazado por BCB. No se creó la venta.'
               : 'QR pendiente según BCB. No se creó la venta.',
-          data: {
-            qrId,
-            qrStatus,
-            notification,
-          },
+          data,
         };
       }
 
       if (qrPayment.qrStatus === QrPaymentStatus.PAGADO) {
         await this.removeTemporaryQrImage(qrId);
 
+        const data = {
+          qrId,
+          qrStatus: qrPayment.qrStatus,
+          notification,
+        };
+
         return {
           error: false,
           message: 'La notificación BCB ya fue procesada anteriormente.',
-          data: {
-            qrId,
-            qrStatus: qrPayment.qrStatus,
-            notification,
-          },
+          data,
+        };
+      }
+
+      const paymentValidationErrors =
+        this.validatePaidQrNotification(qrPayment, notification);
+
+      if (paymentValidationErrors.length > 0) {
+        const data = {
+          qrId,
+          qrStatus,
+          validationErrors: paymentValidationErrors,
+          notification,
+        };
+
+        return {
+          error: true,
+          message: 'La notificación BCB no coincide con el QR generado.',
+          data,
         };
       }
 
@@ -1137,55 +1251,93 @@ export class SalesService {
         : null;
 
       if (existingSale) {
+        const [existingVoucher, existingSaleProducts] = await Promise.all([
+          this.dataSource.getRepository(Voucher).findOne({
+            select: { id: true },
+            where: { sale: { id: existingSale.id } },
+          }),
+          this.saleProductsRepository.find({
+            select: { id: true },
+            where: { sale: { id: existingSale.id } },
+          }),
+        ]);
+
+        if (!existingVoucher || existingSaleProducts.length === 0) {
+          const data = {
+            qrId,
+            saleId: existingSale.id,
+            transactionId,
+          };
+
+          return {
+            error: true,
+            message:
+              'La transacción BCB ya tiene una venta, pero sus registros están incompletos.',
+            data,
+          };
+        }
+
         qrPayment.qrStatus = QrPaymentStatus.PAGADO;
-        qrPayment.dataResponse = this.mergeQrPaymentDataResponse(qrPayment, {
-          lastBcbNotification: notification,
-        });
+        qrPayment.dataResponse = {
+          saleId: existingSale.id,
+          voucherId: existingVoucher.id,
+          saleProductIds: existingSaleProducts.map(
+            (saleProduct) => saleProduct.id,
+          ),
+        };
         await this.qrPaymentSaleRepository.save(qrPayment);
         await this.removeTemporaryQrImage(qrId);
+
+        const data = {
+          qrId,
+          saleId: existingSale.id,
+          transactionId,
+          notification,
+        };
 
         return {
           error: false,
           message: 'La venta ya fue creada para esta transacción BCB.',
-          data: {
-            qrId,
-            saleId: existingSale.id,
-            transactionId,
-            notification,
-          },
+          data,
         };
       }
 
       const salePayload = this.buildSalePayloadFromQrPayment(qrPayment);
 
       if (!salePayload) {
+        const data = { qrId, notification };
+
         return {
           error: true,
           message:
             'El QR no tiene los datos originales necesarios para crear la venta.',
-          data: { qrId, notification },
+          data,
         };
       }
 
       const validation = await this.validateSaleInput(salePayload);
 
       if (validation.error) {
+        const data = {
+          qrId,
+          notification,
+          validation,
+        };
+
         return {
           error: true,
           message: validation.message,
-          data: {
-            qrId,
-            notification,
-            validation,
-          },
+          data,
         };
       }
 
       if (!this.isQrPaymentType(validation.paymentType)) {
+        const data = { qrId, notification };
+
         return {
           error: true,
           message: 'El QR generado no corresponde a un tipo de pago QR.',
-          data: { qrId, notification },
+          data,
         };
       }
 
@@ -1194,112 +1346,40 @@ export class SalesService {
         validation,
         transactionId,
         voucher: {
-          customer: notification?.nombreOriginante?.trim() || null,
-          identityCardCustomer: notification?.ciNitOriginante?.trim() || null,
+          customer: notification?.nombreOriginante?.trim(),
+          identityCardCustomer: notification?.ciNitOriginante?.trim(),
           paymentLocation: null,
           receiptNumber: null,
           description: null,
           depositDate:
-            this.extractDepositDateFromBcbNotification(notification) ??
-            new Date(),
+            this.extractDepositDateFromBcbNotification(notification),
         },
         qrPayment,
-        qrPaymentDataResponse: this.mergeQrPaymentDataResponse(qrPayment, {
-          lastBcbNotification: notification,
-        }),
       });
       await this.removeTemporaryQrImage(qrId);
+
+      const data = {
+        qrId,
+        saleId: createdSale.sale.id,
+        voucherId: createdSale.voucher.id,
+        transactionId: createdSale.sale.transactionId,
+        notification,
+      };
 
       return {
         error: false,
         message: 'Notificación BCB procesada. Venta creada correctamente.',
-        data: {
-          qrId,
-          saleId: createdSale.sale.id,
-          voucherId: createdSale.voucher.id,
-          transactionId: createdSale.sale.transactionId,
-          notification,
-        },
+        data,
       };
     } catch (error) {
       this.logError('Error al procesar notificación BCB', error);
-    }
-  }
 
-  // Borrar despues de las pruebas
-  async processBcbPaymentNotificationPrueba(data: GetQrCodeStatusDto) {
-    const qrId = data.qrId.trim();
-    const qrPayment = await this.qrPaymentSaleRepository.findOne({
-      where: { qrId },
-    });
-
-    if (!qrPayment) {
       return {
         error: true,
-        message: 'No se encontró un QR generado con el id enviado.',
-        data: { qrId },
+        message: 'Error al procesar la notificación BCB.',
+        data: null,
       };
     }
-
-    const salePayload = this.buildSalePayloadFromQrPayment(qrPayment);
-
-    if (!salePayload) {
-      return {
-        error: true,
-        message:
-          'El QR no tiene los datos originales necesarios para simular el pago.',
-        data: { qrId },
-      };
-    }
-
-    const personResult = await this.personDetailsById(salePayload.personId);
-
-    if (personResult.error || !personResult.data) {
-      return {
-        error: true,
-        message:
-          personResult.message ??
-          'No se pudieron obtener los datos de la persona del QR.',
-        data: { qrId, personId: salePayload.personId },
-      };
-    }
-
-    const amount = salePayload.saleProducts.reduce(
-      (total, product) =>
-        total + Number(product.price) * Number(product.amount),
-      0,
-    );
-    const now = new Date();
-    const notification = {
-      idQR: qrId,
-      idOrdenDestinatario: `SIM${now.getTime()}`,
-      eif: 'SIMULADO',
-      ciNitOriginante: personResult.data.identityCard,
-      nombreOriginante: personResult.data.fullName,
-      codMoneda: 'BOB',
-      importe: Number(amount.toFixed(2)),
-      cuentaOrigen: 'SIMULADA',
-      eifOrigen: 'SIMULADO',
-      tipoNotificacion: 'T1',
-      estado: 'PROCESADO',
-      fechaPago: now.toISOString(),
-      metaData: {
-        simulated: true,
-        personId: salePayload.personId,
-      },
-    };
-
-    return this.processBcbPaymentNotification({
-      notification,
-      bcbValidation: {
-        finalizado: true,
-        serviceStatus: true,
-        statusValidation: {
-          isPaid: true,
-          simulated: true,
-        },
-      },
-    });
   }
 
   async personSales(personId: number) {
@@ -1530,19 +1610,90 @@ export class SalesService {
     }
   }
 
-  private mergeQrPaymentDataResponse(
+  private validatePaidQrNotification(
     qrPayment: QrPaymentSale,
-    data: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const currentData =
+    notification: Record<string, any>,
+  ): string[] {
+    const errors: string[] = [];
+    const storedData =
       qrPayment.dataResponse && typeof qrPayment.dataResponse === 'object'
-        ? qrPayment.dataResponse
+        ? (qrPayment.dataResponse as Record<string, any>)
         : {};
+    const expectedAmount = this.resolveStoredQrAmount(storedData);
+    const receivedAmount = Number(notification?.importe);
+    const expectedCurrency = String(storedData.currency ?? 'BOB').toUpperCase();
+    const receivedCurrency = String(notification?.codMoneda ?? '').toUpperCase();
 
-    return {
-      ...currentData,
-      ...data,
+    if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) {
+      errors.push('importe: BCB no envió un monto válido');
+    } else if (
+      expectedAmount === null ||
+      Math.round(receivedAmount * 100) !== Math.round(expectedAmount * 100)
+    ) {
+      errors.push(
+        `importe: se esperaba ${expectedAmount?.toFixed(2) ?? 'un monto registrado'} y se recibió ${receivedAmount.toFixed(2)}`,
+      );
+    }
+
+    if (!receivedCurrency || receivedCurrency !== expectedCurrency) {
+      errors.push(
+        `codMoneda: se esperaba ${expectedCurrency} y se recibió ${receivedCurrency || 'vacío'}`,
+      );
+    }
+
+    if (!this.extractBcbTransactionId(notification)) {
+      errors.push('idOrdenDestinatario: es obligatorio para confirmar el pago');
+    }
+
+    return errors;
+  }
+
+  private validateQrNotificationMetadata(
+    qrPayment: QrPaymentSale,
+    metadata: Record<string, unknown>,
+  ): string[] {
+    const errors: string[] = [];
+    const expectedMetadata: Record<string, string> = {
+      origen: 'sales-service',
+      schema: 'sales',
+      message: 'bcbPaymentNotification',
+      tipo: 'venta-qr',
+      personId: String(qrPayment.personId),
     };
+
+    Object.entries(expectedMetadata).forEach(([key, expectedValue]) => {
+      const receivedValue = String(metadata?.[key] ?? '').trim();
+
+      if (receivedValue !== expectedValue) {
+        errors.push(
+          `${key}: se esperaba ${expectedValue} y se recibió ${receivedValue || 'vacío'}`,
+        );
+      }
+    });
+
+    return errors;
+  }
+
+  private resolveStoredQrAmount(
+    storedData: Record<string, any>,
+  ): number | null {
+    const storedTotal = Number(storedData.total);
+
+    if (Number.isFinite(storedTotal) && storedTotal > 0) {
+      return Number(storedTotal.toFixed(2));
+    }
+
+    if (!Array.isArray(storedData.saleProducts)) {
+      return null;
+    }
+
+    const total = storedData.saleProducts.reduce(
+      (sum: number, product: Record<string, unknown>) =>
+        sum + Number(product?.price) * Number(product?.amount),
+      0,
+    );
+
+    return Number.isFinite(total) && total > 0 ? Number(total.toFixed(2)) : null;
   }
 
   // lectura JSON de qrPayment.dataResponse
@@ -1893,6 +2044,8 @@ export class SalesService {
       codigoServicio: '0',
       metaData: {
         origen: 'sales-service',
+        schema: 'sales',
+        message: 'bcbPaymentNotification',
         tipo: 'venta-qr',
       },
     };
@@ -2021,7 +2174,7 @@ export class SalesService {
 
   private buildDefaultQrExpiration(): Date {
     const date = new Date();
-    date.setDate(date.getDate() + 1);
+    date.setMinutes(date.getMinutes() + this.qrExpirationMinutes);
 
     return date;
   }
@@ -2070,15 +2223,11 @@ export class SalesService {
     qrData: BcbQrDataDto,
     sale: { id?: number | null; personId: number },
     saleTotal: number,
-    saleProducts: NormalizedSaleProductDto[],
-    person: PersonForCreatingSaleDataDto,
   ): Record<string, unknown> {
     const importe = Number(Number(saleTotal).toFixed(2));
     const metaData = this.buildBcbQrMetaData(
       qrData.metaData,
       sale,
-      saleProducts,
-      person,
     );
 
     return {
@@ -2104,20 +2253,10 @@ export class SalesService {
   private buildBcbQrMetaData(
     input: Record<string, unknown> | undefined,
     sale: { id?: number | null; personId: number },
-    saleProducts: NormalizedSaleProductDto[],
-    person: PersonForCreatingSaleDataDto,
   ): Record<string, string> {
     const metadata: Record<string, unknown> = {
       ...(input ?? {}),
-      ...(sale.id ? { saleId: sale.id } : {}),
       personId: sale.personId,
-      fullName: person.fullName,
-      identityCard: person.identityCard,
-      productCount: saleProducts.length,
-      productCodes: saleProducts
-        .map((product) => product.code)
-        .filter(Boolean)
-        .join(','),
     };
 
     return Object.fromEntries(

@@ -3,13 +3,17 @@ import {
   ArrayMinSize,
   IsBoolean,
   IsArray,
+  IsDefined,
+  IsIn,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsObject,
   IsOptional,
   IsPositive,
   IsString,
   MaxLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { SaleProductDto } from './create-sale.dto';
@@ -62,9 +66,8 @@ export class BcbQrDataDto {
   @MaxLength(30)
   codigoServicio: string;
 
-  @IsOptional()
   @IsObject()
-  metaData?: Record<string, unknown>;
+  metaData: Record<string, unknown>;
 }
 
 export class GenerateQrDto {
@@ -97,4 +100,76 @@ export class GetQrCodeStatusDto {
   @IsNotEmpty()
   @MaxLength(50)
   qrId: string;
+}
+
+export class BcbPaymentNotificationDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  idQR: string;
+
+  @ValidateIf((notification) => notification.estado === 'PROCESADO')
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  idOrdenDestinatario?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  eif: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  ciNitOriginante?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  nombreOriginante?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  cuentaOrigen?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  eifOrigen?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  tipoNotificacion?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(3)
+  codMoneda: string;
+
+  @ValidateIf((notification) => notification.estado === 'PROCESADO')
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  importe?: number;
+
+  @IsString()
+  @IsIn(['PROCESADO', 'RECHAZADO', 'NO PROCESADO'])
+  estado: string;
+
+  @IsObject()
+  metaData: Record<string, unknown>;
+}
+
+export class ProcessBcbPaymentNotificationDto {
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => BcbPaymentNotificationDto)
+  notification: BcbPaymentNotificationDto;
+
+  @IsOptional()
+  @IsObject()
+  bcbValidation?: Record<string, unknown>;
 }
