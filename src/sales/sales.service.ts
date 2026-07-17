@@ -1436,7 +1436,6 @@ export class SalesService {
       name: this.buildQrImageTmpName(qrId),
     });
     const qrImage = response?.qrImage;
-
     return typeof qrImage === 'string' && qrImage.length > 0 ? qrImage : null;
   }
 
@@ -2189,7 +2188,7 @@ export class SalesService {
     }
   }
 
-  async personSaleDetails(saleId: number): Promise<{
+  async voucherPdf(saleId: number): Promise<{
     error: boolean;
     message: string;
     data: Record<string, unknown> | null;
