@@ -4,6 +4,7 @@ import {
   CreateSaleDto,
   GenerateQrDto,
   GetQrCodeStatusDto,
+  ProcessBcbPaymentNotificationDto,
   SalesListDto,
 } from './dto';
 import { SalesService } from './sales.service';
@@ -71,15 +72,10 @@ export class SalesController {
   }
 
   @MessagePattern('sales.bcbPaymentNotification')
-  async processBcbPaymentNotification(@Payload() data: any) {
-    return this.salesService.processBcbPaymentNotification(data);
-  }
-
-  @MessagePattern('sales.bcbPaymentNotificationPrueba')
-  async processBcbPaymentNotificationPrueba(
-    @Payload() data: GetQrCodeStatusDto,
+  async processBcbPaymentNotification(
+    @Payload() data: ProcessBcbPaymentNotificationDto,
   ) {
-    return this.salesService.processBcbPaymentNotificationPrueba(data);
+    return this.salesService.processBcbPaymentNotification(data);
   }
 
   @MessagePattern('sales.personSales')
