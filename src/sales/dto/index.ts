@@ -13,7 +13,6 @@ export {
   BcbQrDataDto,
   GenerateQrDto,
   GetQrCodeStatusDto,
-  ProcessBcbPaymentNotificationDto,
 } from './qr-code.dto';
 export { SaleListItemDto, SaleListProductDto } from './sale-list-item.dto';
 export { SalesListDto, SalesListItemReportDto } from './sales-list.dto';

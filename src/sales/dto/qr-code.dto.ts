@@ -3,7 +3,6 @@ import {
   ArrayMinSize,
   IsBoolean,
   IsArray,
-  IsDefined,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -161,15 +160,4 @@ export class BcbPaymentNotificationDto {
 
   @IsObject()
   metaData: Record<string, unknown>;
-}
-
-export class ProcessBcbPaymentNotificationDto {
-  @IsDefined()
-  @ValidateNested()
-  @Type(() => BcbPaymentNotificationDto)
-  notification: BcbPaymentNotificationDto;
-
-  @IsOptional()
-  @IsObject()
-  bcbValidation?: Record<string, unknown>;
 }
