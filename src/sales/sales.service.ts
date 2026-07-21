@@ -53,7 +53,7 @@ import {
 export class SalesService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('SalesService');
   private readonly qrTempPath = 'temporalqr';
-  private readonly qrExpirationMinutes = 1;
+  private readonly qrExpirationMinutes = 15;
   private readonly qrExpirationSweepIntervalMs = 30_000;
   private qrExpirationTimer: NodeJS.Timeout | null = null;
   private qrExpirationSweepRunning = false;
@@ -856,6 +856,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     };
     transactionId?: string | null;
     qrPayment?: QrPaymentSale | null;
+    paymentNotification?: BcbPaymentNotificationDto | null;
   }): Promise<{
     sale: Sale;
     saleProducts: SaleProduct[];
@@ -867,6 +868,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       voucher,
       transactionId = null,
       qrPayment = null,
+      paymentNotification = null,
     } = params;
 
     return this.dataSource.transaction(async (manager) => {
@@ -920,13 +922,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
       if (qrPayment) {
         qrPayment.qrStatus = QrPaymentStatus.PAGADO;
-        qrPayment.dataResponse = {
-          saleId: sale.id,
-          voucherId: savedVoucher.id,
-          saleProductIds: savedSaleProducts.map(
-            (saleProduct) => saleProduct.id,
-          ),
-        };
+        qrPayment.dataResponse = this.buildPaidQrDataResponse(
+          qrPayment,
+          paymentNotification,
+        );
         savedQrPayment = await manager.save(QrPaymentSale, qrPayment);
       }
 
@@ -1058,7 +1057,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       const depositDate =
         this.extractDepositDateFromQrStatus(response) ??
         (response?.statusValidation?.isPaid ? new Date() : null);
-      const qrStatus = this.resolveQrPaymentStatus(response, qrPayment);
+      let qrStatus = this.resolveQrPaymentStatus(response, qrPayment);
       let saleProcessing: Record<string, unknown> | null = null;
 
       if (qrStatus === QrPaymentStatus.PAGADO) {
@@ -1102,11 +1101,24 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
         saleProcessing = paymentResult.data;
       } else if (qrPayment) {
-        qrPayment.qrStatus = qrStatus;
+        const statusUpdate = await this.qrPaymentSaleRepository.update(
+          {
+            id: qrPayment.id,
+            qrStatus: qrPayment.qrStatus,
+          },
+          { qrStatus },
+        );
 
-        await this.qrPaymentSaleRepository.save(qrPayment);
+        if (!statusUpdate.affected) {
+          const currentQrPayment = await this.qrPaymentSaleRepository.findOne({
+            where: { id: qrPayment.id },
+            select: { qrStatus: true },
+          });
 
-        if (qrStatus !== QrPaymentStatus.PENDIENTE) {
+          qrStatus = currentQrPayment?.qrStatus ?? qrStatus;
+        }
+
+        if (statusUpdate.affected && qrStatus !== QrPaymentStatus.PENDIENTE) {
           await this.removeTemporaryQrImage(qrId);
         }
       }
@@ -1222,6 +1234,11 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (qrPayment.qrStatus === QrPaymentStatus.PAGADO) {
+        qrPayment.dataResponse = this.buildPaidQrDataResponse(
+          qrPayment,
+          notification,
+        );
+        await this.qrPaymentSaleRepository.save(qrPayment);
         await this.removeTemporaryQrImage(qrId);
 
         const data = {
@@ -1292,13 +1309,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         }
 
         qrPayment.qrStatus = QrPaymentStatus.PAGADO;
-        qrPayment.dataResponse = {
-          saleId: existingSale.id,
-          voucherId: existingVoucher.id,
-          saleProductIds: existingSaleProducts.map(
-            (saleProduct) => saleProduct.id,
-          ),
-        };
+        qrPayment.dataResponse = this.buildPaidQrDataResponse(
+          qrPayment,
+          notification,
+        );
         await this.qrPaymentSaleRepository.save(qrPayment);
         await this.removeTemporaryQrImage(qrId);
 
@@ -1368,6 +1382,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           depositDate: this.extractDepositDateFromBcbNotification(notification),
         },
         qrPayment,
+        paymentNotification: notification,
       });
       await this.removeTemporaryQrImage(qrId);
 
@@ -1556,7 +1571,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     const expiredQrPayments = await this.qrPaymentSaleRepository.find({
       where,
       select: {
-        id: true,
         qrId: true,
       },
     });
@@ -1565,31 +1579,17 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const expiredQrPaymentIds = expiredQrPayments.map(
-      (qrPayment) => qrPayment.id,
-    );
+    for (const qrPayment of expiredQrPayments) {
+      const statusResult = await this.getQRCodeStatus({
+        qrId: qrPayment.qrId,
+      });
 
-    await this.qrPaymentSaleRepository.update(
-      {
-        id: In(expiredQrPaymentIds),
-        qrStatus: QrPaymentStatus.PENDIENTE,
-        expirationDateQr: LessThanOrEqual(expirationLimit),
-      },
-      { qrStatus: QrPaymentStatus.EXPIRADO },
-    );
-
-    await Promise.all(
-      expiredQrPayments.map(async (qrPayment) => {
-        try {
-          await this.removeTemporaryQrImage(qrPayment.qrId);
-        } catch (error) {
-          this.logError(
-            `No se pudo eliminar la imagen temporal del QR expirado ${qrPayment.qrId}`,
-            error,
-          );
-        }
-      }),
-    );
+      if (statusResult.error) {
+        this.logger.warn(
+          `No se cambió a EXPIRADO el QR ${qrPayment.qrId} porque no se pudo confirmar su estado en BCB: ${statusResult.message}`,
+        );
+      }
+    }
   }
 
   private async runQrExpirationSweep(): Promise<void> {
@@ -1743,6 +1743,46 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     return Number.isFinite(total) && total > 0
       ? Number(total.toFixed(2))
       : null;
+  }
+
+  private buildPaidQrDataResponse(
+    qrPayment: QrPaymentSale,
+    notification: BcbPaymentNotificationDto | null,
+  ): Record<string, unknown> {
+    const storedData =
+      qrPayment.dataResponse && typeof qrPayment.dataResponse === 'object'
+        ? (qrPayment.dataResponse as Record<string, any>)
+        : {};
+
+    const data = {
+      total: storedData.total,
+      currency: storedData.currency,
+      personId: storedData.personId ?? qrPayment.personId,
+      parameterId: storedData.parameterId,
+      receptionist: storedData.receptionist,
+      saleProducts: Array.isArray(storedData.saleProducts)
+        ? storedData.saleProducts.map((saleProduct) => ({
+            code: saleProduct?.code,
+            name: saleProduct?.name,
+            price: saleProduct?.price,
+            amount: saleProduct?.amount,
+            productId: saleProduct?.productId,
+          }))
+        : [],
+      paymentTypeId: storedData.paymentTypeId,
+      notificationData: {
+        idOrdenDestinatario:
+          notification?.idOrdenDestinatario ?? storedData.idOrdenDestinatario,
+        tipoNotificacion:
+          notification?.tipoNotificacion ?? storedData.tipoNotificacion,
+        nombreOriginante:
+          notification?.nombreOriginante ?? storedData.nombreOriginante,
+        ciNitOriginante:
+          notification?.ciNitOriginante ?? storedData.ciNitOriginante,
+        eifOrigen: notification?.eifOrigen ?? storedData.eifOrigen,
+      },
+    };
+    return data;
   }
 
   // lectura JSON de qrPayment.dataResponse
