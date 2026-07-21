@@ -2,9 +2,9 @@ import { Controller, ParseIntPipe } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import {
   CreateSaleDto,
+  BcbPaymentNotificationDto,
   GenerateQrDto,
   GetQrCodeStatusDto,
-  ProcessBcbPaymentNotificationDto,
   SalesListDto,
 } from './dto';
 import { SalesService } from './sales.service';
@@ -73,7 +73,7 @@ export class SalesController {
 
   @MessagePattern('sales.bcbPaymentNotification')
   async processBcbPaymentNotification(
-    @Payload() data: ProcessBcbPaymentNotificationDto,
+    @Payload() data: BcbPaymentNotificationDto,
   ) {
     return this.salesService.processBcbPaymentNotification(data);
   }
@@ -91,7 +91,7 @@ export class SalesController {
   @MessagePattern('sales.qrImage')
   async getQrImage(@Payload('qrId') qrId: string) {
     return this.salesService.getTemporaryQrImage(qrId);
-  } 
+  }
 
   @MessagePattern('sales.voucherPdf')
   async personSaleDetails(@Payload('saleId', ParseIntPipe) saleId: number) {

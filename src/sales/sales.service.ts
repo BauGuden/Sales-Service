@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
 import {
@@ -6,7 +11,6 @@ import {
   DataSource,
   EntityManager,
   In,
-  LessThan,
   LessThanOrEqual,
   MoreThan,
   MoreThanOrEqual,
@@ -28,6 +32,7 @@ import {
 import {
   AccountDataDto,
   AccountLookupDataDto,
+  BcbPaymentNotificationDto,
   BcbQrDataDto,
   CreateSaleDto,
   GenerateQrDto,
@@ -38,7 +43,6 @@ import {
   ParameterDataDto,
   PaymentTypeDataDto,
   PersonForCreatingSaleDataDto,
-  ProcessBcbPaymentNotificationDto,
   ProductDataDto,
   SearchPersonDataDto,
   SalesListDto,
@@ -46,10 +50,13 @@ import {
 } from './dto';
 
 @Injectable()
-export class SalesService {
+export class SalesService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('SalesService');
   private readonly qrTempPath = 'temporalqr';
-  private readonly qrExpirationMinutes = 15;
+  private readonly qrExpirationMinutes = 1;
+  private readonly qrExpirationSweepIntervalMs = 30_000;
+  private qrExpirationTimer: NodeJS.Timeout | null = null;
+  private qrExpirationSweepRunning = false;
 
   constructor(
     private readonly nats: NatsService,
@@ -69,6 +76,22 @@ export class SalesService {
     private readonly qrPaymentSaleRepository: Repository<QrPaymentSale>,
     private readonly dataSource: DataSource,
   ) {}
+
+  onModuleInit(): void {
+    void this.runQrExpirationSweep();
+    this.qrExpirationTimer = setInterval(
+      () => void this.runQrExpirationSweep(),
+      this.qrExpirationSweepIntervalMs,
+    );
+    this.qrExpirationTimer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.qrExpirationTimer) {
+      clearInterval(this.qrExpirationTimer);
+      this.qrExpirationTimer = null;
+    }
+  }
 
   async searchPerson(
     value: string,
@@ -674,7 +697,7 @@ export class SalesService {
     } | null;
   }> {
     try {
-      await this.deleteExpiredPendingQrPayments();
+      await this.expirePendingQrPayments();
 
       const validation = await this.validateSaleInput(payload);
 
@@ -900,7 +923,9 @@ export class SalesService {
         qrPayment.dataResponse = {
           saleId: sale.id,
           voucherId: savedVoucher.id,
-          saleProductIds: savedSaleProducts.map((saleProduct) => saleProduct.id),
+          saleProductIds: savedSaleProducts.map(
+            (saleProduct) => saleProduct.id,
+          ),
         };
         savedQrPayment = await manager.save(QrPaymentSale, qrPayment);
       }
@@ -1049,19 +1074,12 @@ export class SalesService {
         }
 
         const paymentResult = await this.processBcbPaymentNotification({
-          notification: {
-            ...processedOrder,
-            idQR: qrId,
-            eif: String(processedOrder.eif ?? 'BCB_STATUS_QUERY'),
-            codMoneda: String(processedOrder.codMoneda ?? ''),
-            estado: 'PROCESADO',
-            metaData:
-              processedOrder.metaData ?? response?.datos?.metaData ?? {},
-          },
-          bcbValidation: {
-            statusValidation: response?.statusValidation ?? null,
-            source: 'QR_STATUS_QUERY',
-          },
+          ...processedOrder,
+          idQR: qrId,
+          eif: String(processedOrder.eif ?? 'BCB_STATUS_QUERY'),
+          codMoneda: String(processedOrder.codMoneda ?? ''),
+          estado: 'PROCESADO',
+          metaData: processedOrder.metaData ?? response?.datos?.metaData ?? {},
         });
 
         if (paymentResult.error) {
@@ -1084,17 +1102,12 @@ export class SalesService {
 
         saleProcessing = paymentResult.data;
       } else if (qrPayment) {
-        if (qrStatus === QrPaymentStatus.EXPIRADO) {
+        qrPayment.qrStatus = qrStatus;
+
+        await this.qrPaymentSaleRepository.save(qrPayment);
+
+        if (qrStatus !== QrPaymentStatus.PENDIENTE) {
           await this.removeTemporaryQrImage(qrId);
-          await this.qrPaymentSaleRepository.delete({ id: qrPayment.id });
-        } else {
-          qrPayment.qrStatus = qrStatus;
-
-          await this.qrPaymentSaleRepository.save(qrPayment);
-
-          if (qrStatus !== QrPaymentStatus.PENDIENTE) {
-            await this.removeTemporaryQrImage(qrId);
-          }
         }
       }
 
@@ -1129,14 +1142,13 @@ export class SalesService {
   }
 
   async processBcbPaymentNotification(
-    payload: ProcessBcbPaymentNotificationDto,
+    notification: BcbPaymentNotificationDto,
   ): Promise<{
     error: boolean;
     message: string;
     data: Record<string, unknown> | null;
   }> {
     try {
-      const notification = payload.notification;
       const qrId = this.extractQrIdFromBcbNotification(notification);
 
       if (!qrId) {
@@ -1225,8 +1237,10 @@ export class SalesService {
         };
       }
 
-      const paymentValidationErrors =
-        this.validatePaidQrNotification(qrPayment, notification);
+      const paymentValidationErrors = this.validatePaidQrNotification(
+        qrPayment,
+        notification,
+      );
 
       if (paymentValidationErrors.length > 0) {
         const data = {
@@ -1351,8 +1365,7 @@ export class SalesService {
           paymentLocation: null,
           receiptNumber: null,
           description: null,
-          depositDate:
-            this.extractDepositDateFromBcbNotification(notification),
+          depositDate: this.extractDepositDateFromBcbNotification(notification),
         },
         qrPayment,
       });
@@ -1440,7 +1453,7 @@ export class SalesService {
         };
       }
 
-      await this.deleteExpiredPendingQrPayments(personId);
+      await this.expirePendingQrPayments(personId);
 
       const qrPayments = await this.qrPaymentSaleRepository.find({
         where: {
@@ -1533,13 +1546,12 @@ export class SalesService {
     return `${encodeURIComponent(qrId)}.json`;
   }
 
-  private async deleteExpiredPendingQrPayments(
-    personId?: number,
-  ): Promise<void> {
+  private async expirePendingQrPayments(personId?: number): Promise<void> {
+    const expirationLimit = new Date();
     const where = {
       ...(personId ? { personId } : {}),
       qrStatus: QrPaymentStatus.PENDIENTE,
-      expirationDateQr: LessThan(new Date()),
+      expirationDateQr: LessThanOrEqual(expirationLimit),
     };
     const expiredQrPayments = await this.qrPaymentSaleRepository.find({
       where,
@@ -1553,14 +1565,47 @@ export class SalesService {
       return;
     }
 
+    const expiredQrPaymentIds = expiredQrPayments.map(
+      (qrPayment) => qrPayment.id,
+    );
+
+    await this.qrPaymentSaleRepository.update(
+      {
+        id: In(expiredQrPaymentIds),
+        qrStatus: QrPaymentStatus.PENDIENTE,
+        expirationDateQr: LessThanOrEqual(expirationLimit),
+      },
+      { qrStatus: QrPaymentStatus.EXPIRADO },
+    );
+
     await Promise.all(
-      expiredQrPayments.map((qrPayment) =>
-        this.removeTemporaryQrImage(qrPayment.qrId),
-      ),
+      expiredQrPayments.map(async (qrPayment) => {
+        try {
+          await this.removeTemporaryQrImage(qrPayment.qrId);
+        } catch (error) {
+          this.logError(
+            `No se pudo eliminar la imagen temporal del QR expirado ${qrPayment.qrId}`,
+            error,
+          );
+        }
+      }),
     );
-    await this.qrPaymentSaleRepository.delete(
-      expiredQrPayments.map((qrPayment) => qrPayment.id),
-    );
+  }
+
+  private async runQrExpirationSweep(): Promise<void> {
+    if (this.qrExpirationSweepRunning) {
+      return;
+    }
+
+    this.qrExpirationSweepRunning = true;
+
+    try {
+      await this.expirePendingQrPayments();
+    } catch (error) {
+      this.logError('Error al actualizar los QR expirados', error);
+    } finally {
+      this.qrExpirationSweepRunning = false;
+    }
   }
 
   private extractQrIdFromBcbNotification(notification: any): string {
@@ -1622,7 +1667,9 @@ export class SalesService {
     const expectedAmount = this.resolveStoredQrAmount(storedData);
     const receivedAmount = Number(notification?.importe);
     const expectedCurrency = String(storedData.currency ?? 'BOB').toUpperCase();
-    const receivedCurrency = String(notification?.codMoneda ?? '').toUpperCase();
+    const receivedCurrency = String(
+      notification?.codMoneda ?? '',
+    ).toUpperCase();
 
     if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) {
       errors.push('importe: BCB no envió un monto válido');
@@ -1693,7 +1740,9 @@ export class SalesService {
       0,
     );
 
-    return Number.isFinite(total) && total > 0 ? Number(total.toFixed(2)) : null;
+    return Number.isFinite(total) && total > 0
+      ? Number(total.toFixed(2))
+      : null;
   }
 
   // lectura JSON de qrPayment.dataResponse
@@ -2225,10 +2274,7 @@ export class SalesService {
     saleTotal: number,
   ): Record<string, unknown> {
     const importe = Number(Number(saleTotal).toFixed(2));
-    const metaData = this.buildBcbQrMetaData(
-      qrData.metaData,
-      sale,
-    );
+    const metaData = this.buildBcbQrMetaData(qrData.metaData, sale);
 
     return {
       titularDestinatario: qrData.titularDestinatario.trim(),
