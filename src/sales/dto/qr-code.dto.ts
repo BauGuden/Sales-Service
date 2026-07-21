@@ -12,7 +12,6 @@ import {
   IsPositive,
   IsString,
   MaxLength,
-  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { SaleProductDto } from './create-sale.dto';
@@ -107,7 +106,6 @@ export class BcbPaymentNotificationDto {
   @MaxLength(50)
   idQR: string;
 
-  @ValidateIf((notification) => notification.estado === 'PROCESADO')
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
@@ -148,7 +146,6 @@ export class BcbPaymentNotificationDto {
   @MaxLength(3)
   codMoneda: string;
 
-  @ValidateIf((notification) => notification.estado === 'PROCESADO')
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
