@@ -2688,7 +2688,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         order: {
           sale: {
             voucher: {
-              createdAt: 'DESC',
+              createdAt: 'ASC',
             },
             id: 'DESC',
           },
@@ -2720,7 +2720,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       const sale = saleProduct.sale;
       const voucher = sale?.voucher as unknown as Voucher | null;
       const personResult = peopleById.get(Number(sale?.personId));
-      const principalCustomer = personResult?.data?.fullName ?? '';
+      const principalCustomer = this.formatPersonName(
+        personResult?.data?.fullName,
+      );
 
       return {
         code: sale?.code ?? null,
@@ -2782,6 +2784,16 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     return String(value ?? '')
       .replace(/[^a-zA-Z0-9]/g, '')
       .toUpperCase();
+  }
+
+  private formatPersonName(value: string | null | undefined): string {
+    return String(value ?? '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .toLocaleLowerCase('es-BO')
+      .replace(/(^|[\s'-])\p{L}/gu, (letter) =>
+        letter.toLocaleUpperCase('es-BO'),
+      );
   }
 
   private formatAmount(value: string | number | null): string {
