@@ -727,7 +727,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         total: validation.saleTotal,
         qrImage,
         qrStatus: QrPaymentStatus.PENDIENTE,
-        expirationDateQr,
+        expirationDateQr: this.formatDate(expirationDateQr),
       };
 
       return {
@@ -925,7 +925,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         description: createdSale.voucher.description,
         paymentTypeId: validation.paymentTypeId,
         paymentTypeState: createdSale.voucher.paymentTypeState,
-        depositDate: createdSale.voucher.depositDate,
+        depositDate: createdSale.voucher.depositDate
+          ? this.formatDate(createdSale.voucher.depositDate)
+          : null,
         total: Number(createdSale.voucher.total),
       },
       qrPayment: createdSale.qrPayment
@@ -980,10 +982,12 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         const paymentResult = await this.processPaidQrStatus(qrId, response);
 
         if (paymentResult.error) {
+          qrStatus = paymentResult.data?.qrStatus ?? qrStatus;
+
           const data = {
             qrId,
             paymentTypeState: PaymentTypeState.PAGADO,
-            depositDate,
+            depositDate: depositDate ? this.formatDate(depositDate) : null,
             qrStatus,
             statusValidation: response?.statusValidation ?? null,
             bcbResponse: response,
@@ -1009,7 +1013,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           : response?.statusValidation?.isRejected
             ? PaymentTypeState.RECHAZADO
             : null,
-        depositDate,
+        depositDate: depositDate ? this.formatDate(depositDate) : null,
         qrStatus,
         statusValidation: response?.statusValidation ?? null,
         bcbResponse: response,
@@ -1148,6 +1152,46 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
+      if (qrPayment.qrStatus === QrPaymentStatus.EXPIRADO) {
+        return this.buildExpiredQrNotificationResponse(qrPayment, notification);
+      }
+
+      if (qrPayment.qrStatus !== QrPaymentStatus.PENDIENTE) {
+        return this.buildInactiveQrNotificationResponse(
+          qrPayment,
+          notification,
+        );
+      }
+
+      if (qrPayment.expirationDateQr.getTime() <= Date.now()) {
+        const currentStatus = await this.updateQrStatusIfUnchanged(
+          qrPayment,
+          QrPaymentStatus.EXPIRADO,
+        );
+
+        if (currentStatus === QrPaymentStatus.PAGADO) {
+          qrPayment.qrStatus = currentStatus;
+
+          return this.processPreviouslyPaidQrNotification(
+            qrPayment,
+            notification,
+          );
+        }
+
+        if (currentStatus !== QrPaymentStatus.EXPIRADO) {
+          qrPayment.qrStatus = currentStatus;
+
+          return this.buildInactiveQrNotificationResponse(
+            qrPayment,
+            notification,
+          );
+        }
+
+        qrPayment.qrStatus = currentStatus;
+
+        return this.buildExpiredQrNotificationResponse(qrPayment, notification);
+      }
+
       const paymentValidationErrors = this.validatePaidQrNotification(
         qrPayment,
         notification,
@@ -1190,6 +1234,41 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         data: null,
       };
     }
+  }
+
+  private buildExpiredQrNotificationResponse(
+    qrPayment: QrPaymentSale,
+    notification: BcbPaymentNotificationDto,
+  ): any {
+    const data = {
+      qrId: qrPayment.qrId,
+      qrStatus: QrPaymentStatus.EXPIRADO,
+      expirationDateQr: this.formatDate(qrPayment.expirationDateQr),
+      notification,
+    };
+
+    return {
+      error: true,
+      message: 'El QR ya expiró. No se puede procesar el pago.',
+      data,
+    };
+  }
+
+  private buildInactiveQrNotificationResponse(
+    qrPayment: QrPaymentSale,
+    notification: BcbPaymentNotificationDto,
+  ): any {
+    const data = {
+      qrId: qrPayment.qrId,
+      qrStatus: qrPayment.qrStatus,
+      notification,
+    };
+
+    return {
+      error: true,
+      message: `El QR no está pendiente. Su estado actual es ${qrPayment.qrStatus}. No se puede procesar el pago.`,
+      data,
+    };
   }
 
   private async processNonPaidQrNotification(
@@ -1442,7 +1521,22 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     return {
       error: false,
       message: 'Registro de ventas obtenido correctamente.',
-      data: sales,
+      data: sales.map((sale) => {
+        const voucher = sale.voucher as unknown as Voucher | null;
+
+        return {
+          ...sale,
+          createdAt: this.formatDate(sale.createdAt),
+          voucher: voucher
+            ? {
+                ...voucher,
+                depositDate: voucher.depositDate
+                  ? this.formatDate(voucher.depositDate)
+                  : null,
+              }
+            : null,
+        };
+      }),
     };
   }
 
@@ -1484,8 +1578,8 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         qrId: qrPayment.qrId,
         dataResponse: qrPayment.dataResponse,
         qrStatus: qrPayment.qrStatus,
-        expirationDateQr: qrPayment.expirationDateQr,
-        createdAt: qrPayment.createdAt,
+        expirationDateQr: this.formatDate(qrPayment.expirationDateQr),
+        createdAt: this.formatDate(qrPayment.createdAt),
       }));
 
       return {
@@ -2110,9 +2204,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       bcbAccount.titularDestinatario || String(account.name ?? '').trim();
     const ciNitDestinatario =
       bcbAccount.ciNitDestinatario || String(account.ciNitTitular ?? '').trim();
-    const fechaVencimiento = this.formatBcbDate(
-      this.buildDefaultQrExpiration(),
-    );
+    const fechaVencimiento = this.formatDate(this.buildDefaultQrExpiration());
 
     return {
       destinationAccount: String(account.name ?? '').trim(),
@@ -2285,7 +2377,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     return date;
   }
 
-  private formatBcbDate(date: Date): string {
+  private formatDate(date: Date): string {
     const pad = (value: number) => String(value).padStart(2, '0');
 
     return [
@@ -2545,7 +2637,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         state: sale.saleState,
         personId: sale.personId,
         receptionist: sale.receptionist,
-        createdAt: sale.createdAt,
+        createdAt: this.formatDate(sale.createdAt),
       },
       principalCustomer: {
         fullName: principalCustomer.fullName,
@@ -2563,9 +2655,11 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         receiptNumber: voucher.receiptNumber,
         description: voucher.description,
         paymentTypeState: voucher.paymentTypeState,
-        depositDate: voucher.depositDate,
+        depositDate: voucher.depositDate
+          ? this.formatDate(voucher.depositDate)
+          : null,
         paymentLocation: voucher.paymentLocation,
-        createdAt: voucher.createdAt,
+        createdAt: this.formatDate(voucher.createdAt),
         total: this.formatAmount(voucher.total),
       },
       payment: {
@@ -2596,7 +2690,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       metadata: {
         source: 'Sales-Service',
         generatedFor: 'receipt',
-        generatedAt: new Date().toISOString(),
+        generatedAt: this.formatDate(new Date()),
       },
     };
 
@@ -2688,7 +2782,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         order: {
           sale: {
             voucher: {
-              createdAt: 'DESC',
+              createdAt: 'ASC',
             },
             id: 'DESC',
           },
@@ -2720,11 +2814,15 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       const sale = saleProduct.sale;
       const voucher = sale?.voucher as unknown as Voucher | null;
       const personResult = peopleById.get(Number(sale?.personId));
-      const principalCustomer = personResult?.data?.fullName ?? '';
+      const principalCustomer = this.formatPersonName(
+        personResult?.data?.fullName,
+      );
 
       return {
         code: sale?.code ?? null,
-        receptionDate: voucher?.createdAt ?? null,
+        receptionDate: voucher?.createdAt
+          ? this.formatDate(voucher.createdAt)
+          : null,
         principalCustomer,
         service: saleProduct.name,
         amount: Number(saleProduct.amount ?? 0),
@@ -2751,13 +2849,13 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           }
         : null,
       filters: {
-        dateFrom: dateRange.from?.toISOString() ?? null,
-        dateTo: dateRange.to?.toISOString() ?? null,
+        dateFrom: dateRange.from ? this.formatDate(dateRange.from) : null,
+        dateTo: dateRange.to ? this.formatDate(dateRange.to) : null,
       },
       metadata: {
         source: 'Sales-Service',
         generatedFor: 'sales-list',
-        generatedAt: new Date().toISOString(),
+        generatedAt: this.formatDate(new Date()),
       },
     };
 
@@ -2782,6 +2880,16 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     return String(value ?? '')
       .replace(/[^a-zA-Z0-9]/g, '')
       .toUpperCase();
+  }
+
+  private formatPersonName(value: string | null | undefined): string {
+    return String(value ?? '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .toLocaleLowerCase('es-BO')
+      .replace(/(^|[\s'-])\p{L}/gu, (letter) =>
+        letter.toLocaleUpperCase('es-BO'),
+      );
   }
 
   private formatAmount(value: string | number | null): string {
