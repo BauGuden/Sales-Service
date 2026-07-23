@@ -982,6 +982,8 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         const paymentResult = await this.processPaidQrStatus(qrId, response);
 
         if (paymentResult.error) {
+          qrStatus = paymentResult.data?.qrStatus ?? qrStatus;
+
           const data = {
             qrId,
             paymentTypeState: PaymentTypeState.PAGADO,
@@ -1150,6 +1152,46 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
+      if (qrPayment.qrStatus === QrPaymentStatus.EXPIRADO) {
+        return this.buildExpiredQrNotificationResponse(qrPayment, notification);
+      }
+
+      if (qrPayment.qrStatus !== QrPaymentStatus.PENDIENTE) {
+        return this.buildInactiveQrNotificationResponse(
+          qrPayment,
+          notification,
+        );
+      }
+
+      if (qrPayment.expirationDateQr.getTime() <= Date.now()) {
+        const currentStatus = await this.updateQrStatusIfUnchanged(
+          qrPayment,
+          QrPaymentStatus.EXPIRADO,
+        );
+
+        if (currentStatus === QrPaymentStatus.PAGADO) {
+          qrPayment.qrStatus = currentStatus;
+
+          return this.processPreviouslyPaidQrNotification(
+            qrPayment,
+            notification,
+          );
+        }
+
+        if (currentStatus !== QrPaymentStatus.EXPIRADO) {
+          qrPayment.qrStatus = currentStatus;
+
+          return this.buildInactiveQrNotificationResponse(
+            qrPayment,
+            notification,
+          );
+        }
+
+        qrPayment.qrStatus = currentStatus;
+
+        return this.buildExpiredQrNotificationResponse(qrPayment, notification);
+      }
+
       const paymentValidationErrors = this.validatePaidQrNotification(
         qrPayment,
         notification,
@@ -1192,6 +1234,41 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         data: null,
       };
     }
+  }
+
+  private buildExpiredQrNotificationResponse(
+    qrPayment: QrPaymentSale,
+    notification: BcbPaymentNotificationDto,
+  ): any {
+    const data = {
+      qrId: qrPayment.qrId,
+      qrStatus: QrPaymentStatus.EXPIRADO,
+      expirationDateQr: this.formatDate(qrPayment.expirationDateQr),
+      notification,
+    };
+
+    return {
+      error: true,
+      message: 'El QR ya expiró. No se puede procesar el pago.',
+      data,
+    };
+  }
+
+  private buildInactiveQrNotificationResponse(
+    qrPayment: QrPaymentSale,
+    notification: BcbPaymentNotificationDto,
+  ): any {
+    const data = {
+      qrId: qrPayment.qrId,
+      qrStatus: qrPayment.qrStatus,
+      notification,
+    };
+
+    return {
+      error: true,
+      message: `El QR no está pendiente. Su estado actual es ${qrPayment.qrStatus}. No se puede procesar el pago.`,
+      data,
+    };
   }
 
   private async processNonPaidQrNotification(
