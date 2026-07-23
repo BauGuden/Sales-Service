@@ -16,15 +16,27 @@ export class SalesListItemReportDto {
   @IsString()
   code: string | null;
 
-  receptionDate: Date | null;
+  @IsString()
+  receptionDate: string | null;
+
+  @IsString()
   principalCustomer: string;
+
+  @IsString()
   service: string;
 
   @Type(() => Number)
   amount: number;
 
+  @IsString()
   price: string;
+
+  @IsString()
   paymentType: string;
+
+  @IsString()
   total: string;
+
+  @IsString()
   receptionist: string;
 }

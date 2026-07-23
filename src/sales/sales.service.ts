@@ -727,7 +727,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         total: validation.saleTotal,
         qrImage,
         qrStatus: QrPaymentStatus.PENDIENTE,
-        expirationDateQr,
+        expirationDateQr: this.formatDate(expirationDateQr),
       };
 
       return {
@@ -925,7 +925,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         description: createdSale.voucher.description,
         paymentTypeId: validation.paymentTypeId,
         paymentTypeState: createdSale.voucher.paymentTypeState,
-        depositDate: createdSale.voucher.depositDate,
+        depositDate: createdSale.voucher.depositDate
+          ? this.formatDate(createdSale.voucher.depositDate)
+          : null,
         total: Number(createdSale.voucher.total),
       },
       qrPayment: createdSale.qrPayment
@@ -983,7 +985,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           const data = {
             qrId,
             paymentTypeState: PaymentTypeState.PAGADO,
-            depositDate,
+            depositDate: depositDate ? this.formatDate(depositDate) : null,
             qrStatus,
             statusValidation: response?.statusValidation ?? null,
             bcbResponse: response,
@@ -1009,7 +1011,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           : response?.statusValidation?.isRejected
             ? PaymentTypeState.RECHAZADO
             : null,
-        depositDate,
+        depositDate: depositDate ? this.formatDate(depositDate) : null,
         qrStatus,
         statusValidation: response?.statusValidation ?? null,
         bcbResponse: response,
@@ -1442,7 +1444,22 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     return {
       error: false,
       message: 'Registro de ventas obtenido correctamente.',
-      data: sales,
+      data: sales.map((sale) => {
+        const voucher = sale.voucher as unknown as Voucher | null;
+
+        return {
+          ...sale,
+          createdAt: this.formatDate(sale.createdAt),
+          voucher: voucher
+            ? {
+                ...voucher,
+                depositDate: voucher.depositDate
+                  ? this.formatDate(voucher.depositDate)
+                  : null,
+              }
+            : null,
+        };
+      }),
     };
   }
 
@@ -1484,8 +1501,8 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         qrId: qrPayment.qrId,
         dataResponse: qrPayment.dataResponse,
         qrStatus: qrPayment.qrStatus,
-        expirationDateQr: qrPayment.expirationDateQr,
-        createdAt: qrPayment.createdAt,
+        expirationDateQr: this.formatDate(qrPayment.expirationDateQr),
+        createdAt: this.formatDate(qrPayment.createdAt),
       }));
 
       return {
@@ -2110,9 +2127,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       bcbAccount.titularDestinatario || String(account.name ?? '').trim();
     const ciNitDestinatario =
       bcbAccount.ciNitDestinatario || String(account.ciNitTitular ?? '').trim();
-    const fechaVencimiento = this.formatBcbDate(
-      this.buildDefaultQrExpiration(),
-    );
+    const fechaVencimiento = this.formatDate(this.buildDefaultQrExpiration());
 
     return {
       destinationAccount: String(account.name ?? '').trim(),
@@ -2285,7 +2300,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     return date;
   }
 
-  private formatBcbDate(date: Date): string {
+  private formatDate(date: Date): string {
     const pad = (value: number) => String(value).padStart(2, '0');
 
     return [
@@ -2545,7 +2560,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         state: sale.saleState,
         personId: sale.personId,
         receptionist: sale.receptionist,
-        createdAt: sale.createdAt,
+        createdAt: this.formatDate(sale.createdAt),
       },
       principalCustomer: {
         fullName: principalCustomer.fullName,
@@ -2563,9 +2578,11 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         receiptNumber: voucher.receiptNumber,
         description: voucher.description,
         paymentTypeState: voucher.paymentTypeState,
-        depositDate: voucher.depositDate,
+        depositDate: voucher.depositDate
+          ? this.formatDate(voucher.depositDate)
+          : null,
         paymentLocation: voucher.paymentLocation,
-        createdAt: voucher.createdAt,
+        createdAt: this.formatDate(voucher.createdAt),
         total: this.formatAmount(voucher.total),
       },
       payment: {
@@ -2596,7 +2613,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       metadata: {
         source: 'Sales-Service',
         generatedFor: 'receipt',
-        generatedAt: new Date().toISOString(),
+        generatedAt: this.formatDate(new Date()),
       },
     };
 
@@ -2726,7 +2743,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
       return {
         code: sale?.code ?? null,
-        receptionDate: voucher?.createdAt ?? null,
+        receptionDate: voucher?.createdAt
+          ? this.formatDate(voucher.createdAt)
+          : null,
         principalCustomer,
         service: saleProduct.name,
         amount: Number(saleProduct.amount ?? 0),
@@ -2753,13 +2772,13 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           }
         : null,
       filters: {
-        dateFrom: dateRange.from?.toISOString() ?? null,
-        dateTo: dateRange.to?.toISOString() ?? null,
+        dateFrom: dateRange.from ? this.formatDate(dateRange.from) : null,
+        dateTo: dateRange.to ? this.formatDate(dateRange.to) : null,
       },
       metadata: {
         source: 'Sales-Service',
         generatedFor: 'sales-list',
-        generatedAt: new Date().toISOString(),
+        generatedAt: this.formatDate(new Date()),
       },
     };
 
