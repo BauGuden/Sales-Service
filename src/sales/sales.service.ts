@@ -33,6 +33,7 @@ import {
   AccountLookupDataDto,
   BcbPaymentNotificationDto,
   BcbQrDataDto,
+  CollectionState,
   CreateCollectionTransactionDto,
   CreateSaleDto,
   GenerateQrDto,
@@ -655,14 +656,14 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
   async generateQr(payload: GenerateQrDto): Promise<any> {
     try {
       await this.expirePendingQrPayments();
+      
+      const saleContext = await this.validateSaleInput(payload);
 
-      const validation = await this.validateSaleInput(payload);
-
-      if (validation.error) {
-        return validation;
+      if (saleContext.error) {
+        return saleContext;
       }
 
-      if (!this.isQrPaymentType(validation.paymentType)) {
+      if (!this.isQrPaymentType(saleContext.paymentType)) {
         return {
           error: true,
           message: 'El tipo de pago seleccionado no corresponde a QR.',
@@ -671,9 +672,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       }
 
       const qrData = await this.buildQrDataFromGlobalAccount(
-        validation.products,
-        validation.saleTotal,
-        validation.normalizedProducts,
+        saleContext.products,
+        saleContext.saleTotal,
+        saleContext.normalizedProducts,
       );
       const qrDataErrors = this.validateBcbQrData(qrData);
 
@@ -688,8 +689,8 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       const generatedQr = await this.generateBcbQr(
         this.buildBcbQrPayload(
           qrData,
-          { id: null, personId: validation.personId },
-          validation.saleTotal,
+          { id: null, personId: saleContext.personId },
+          saleContext.saleTotal,
         ),
       );
       const qrId = String(generatedQr.datos.idQr);
@@ -701,15 +702,16 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
       await this.qrPaymentSaleRepository.save(
         this.qrPaymentSaleRepository.create({
-          personId: validation.personId,
+          personId: saleContext.personId,
           qrId,
           dataResponse: {
-            personId: validation.personId,
-            receptionist: validation.receptionist,
-            paymentTypeId: validation.paymentTypeId,
-            parameterId: validation.parameterId,
+            personId: saleContext.personId,
+            receptionist: saleContext.receptionist,
+            paymentTypeId: saleContext.paymentTypeId,
+            parameterId: saleContext.parameterId,
+            fileNumber: payload.fileNumber.trim(),
             saleProducts: this.mapInputSaleProducts(payload.saleProducts),
-            total: validation.saleTotal,
+            total: saleContext.saleTotal,
             currency: qrData.codMoneda,
             accountNumber: qrData.accountNumber,
             glosa: qrData.glosa,
@@ -720,14 +722,15 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       );
 
       const data = {
-        personId: validation.personId,
-        paymentTypeId: validation.paymentTypeId,
+        personId: saleContext.personId,
+        paymentTypeId: saleContext.paymentTypeId,
         destinationAccount: qrData.destinationAccount,
         accountNumber: qrData.accountNumber,
         ctaDestino: qrData.ctaDestino,
         fechaVencimientoQR: qrData.fechaVencimientoQR,
         bcbQrId: qrId,
-        total: validation.saleTotal,
+        fileNumber: payload.fileNumber.trim(),
+        total: saleContext.saleTotal,
         qrImage,
         qrStatus: QrPaymentStatus.PENDIENTE,
         expirationDateQr: this.formatDate(expirationDateQr),
@@ -751,13 +754,13 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
   async createSale(payload: CreateSaleDto): Promise<any> {
     try {
-      const validation = await this.validateSaleInput(payload);
+      const saleContext = await this.validateSaleInput(payload);
 
-      if (validation.error) {
-        return validation;
+      if (saleContext.error) {
+        return saleContext;
       }
 
-      if (this.isQrPaymentType(validation.paymentType)) {
+      if (this.isQrPaymentType(saleContext.paymentType)) {
         return {
           error: true,
           message:
@@ -766,7 +769,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         };
       }
 
-      if (!this.isManualPaymentType(validation.paymentType)) {
+      if (!this.isManualPaymentType(saleContext.paymentType)) {
         return {
           error: true,
           message:
@@ -781,17 +784,18 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           payload.voucher.identityCardCustomer.trim() || null,
         paymentLocation: payload.voucher.paymentLocation,
         receiptNumber: payload.voucher.receiptNumber?.trim() || null,
+        fileNumber: payload.voucher.fileNumber.trim(),
         description: payload.voucher.description?.trim() || null,
         depositDate:
           this.parseOptionalDate(payload.voucher.depositDate) ?? new Date(),
       };
 
       const createdSale = await this.createSaleRecords({
-        validation,
+        saleContext,
         voucher,
       });
 
-      return this.buildCreateSaleResponse(payload, validation, createdSale);
+      return this.buildCreateSaleResponse(payload, saleContext, createdSale);
     } catch (error) {
       this.logError('Error en la creación de venta', error);
 
@@ -804,24 +808,17 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async registerCollectionTransaction(
-    validation: any,
-    paymentDate: Date,
-    description?: string | null,
+    transactionData: Omit<CreateCollectionTransactionDto, 'accountNumber'>,
+    products: Product[],
     accountNumber?: string,
   ): Promise<any> {
     try {
       const resolvedAccountNumber =
         accountNumber?.trim() ||
-        (await this.resolveCollectionAccountNumber(validation));
+        (await this.resolveCollectionAccountNumber(products));
       const transaction: CreateCollectionTransactionDto = {
-        paymentDate: this.formatDate(paymentDate),
-        receiveName: this.formatPersonName(validation.person.fullName),
-        description,
-        origin: 'SALES',
+        ...transactionData,
         accountNumber: resolvedAccountNumber,
-        paymentType: validation.paymentType.name,
-        total: validation.saleTotal,
-        state: 'NO CONCILIADO',
       };
       const response: any = await this.nats.firstValue(
         'collections.add',
@@ -877,11 +874,11 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async resolveCollectionAccountNumber(
-    validation: any,
+    products: Product[],
   ): Promise<string> {
     const accountIds = [
       ...new Set(
-        validation.products
+        products
           .map((product: Product) => Number(product.group?.accountId))
           .filter((accountId: number) => Number.isInteger(accountId)),
       ),
@@ -937,7 +934,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
   private async createSaleRecords(params: any): Promise<any> {
     const {
-      validation,
+      saleContext,
       voucher,
       qrPayment = null,
       paymentNotification = null,
@@ -951,14 +948,14 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         manager.create(Sale, {
           code,
           saleState,
-          personId: validation.personId,
-          receptionist: validation.receptionist,
-          parameter: validation.parameter,
+          personId: saleContext.personId,
+          receptionist: saleContext.receptionist,
+          parameter: saleContext.parameter,
         }),
       );
 
-      const saleProducts = validation.normalizedProducts.map((item: any) => {
-        const product = validation.productsById.get(item.productId);
+      const saleProducts = saleContext.normalizedProducts.map((item: any) => {
+        const product = saleContext.productsById.get(item.productId);
 
         return manager.create(SaleProduct, {
           sale,
@@ -978,11 +975,12 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           identityCardCustomer: voucher.identityCardCustomer,
           paymentLocation: voucher.paymentLocation,
           receiptNumber: voucher.receiptNumber ?? null,
+          fileNumber: voucher.fileNumber ?? null,
           description: voucher.description ?? null,
-          paymentType: validation.paymentType,
+          paymentType: saleContext.paymentType,
           paymentTypeState: PaymentTypeState.PAGADO,
           depositDate: voucher.depositDate,
-          total: validation.saleTotal,
+          total: saleContext.saleTotal,
         }),
       );
 
@@ -1006,16 +1004,30 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       const collectionDescription = qrPayment
         ? voucher.description
         : await this.getSaleProductsDescription(manager, sale.id);
+      const titularName = this.formatPersonName(saleContext.person.fullName);
+      const payerName = this.formatPersonName(voucher.customer);
       const collectionResult = await this.registerCollectionTransaction(
-        validation,
-        voucher.depositDate,
-        collectionDescription,
+        {
+          paymentDate: this.formatDate(voucher.depositDate),
+          titularName,
+          payerName,
+          description: collectionDescription?.trim(),
+          origin: 'SALES',
+          paymentType: saleContext.paymentType.name,
+          receptionistUser: saleContext.receptionist,
+          total: saleContext.saleTotal,
+          state: CollectionState.NO_COINCILIADO,
+        },
+        saleContext.products,
         destinationAccountNumber,
       );
 
       if (collectionResult.error || !collectionResult.transactionId) {
         throw new Error(collectionResult.message);
       }
+
+      sale.transactionId = collectionResult.transactionId;
+      await manager.save(Sale, sale);
 
       if (qrPayment) {
         qrPayment.dataResponse = {
@@ -1059,15 +1071,15 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
   private buildCreateSaleResponse(
     payload: CreateSaleDto | GenerateQrDto,
-    validation: any,
+    saleContext: any,
     createdSale: any,
   ): any {
     const data = {
       datosIngreso: {
-        personId: validation.personId,
-        receptionist: validation.receptionist,
-        paymentTypeId: validation.paymentTypeId,
-        parameterId: validation.parameterId,
+        personId: saleContext.personId,
+        receptionist: saleContext.receptionist,
+        paymentTypeId: saleContext.paymentTypeId,
+        parameterId: saleContext.parameterId,
         saleProducts: this.mapInputSaleProducts(payload.saleProducts),
       },
       sales: {
@@ -1077,7 +1089,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         personId: createdSale.sale.personId,
         receptionist: createdSale.sale.receptionist,
         transactionId: createdSale.sale.transactionId,
-        parameterId: validation.parameterId,
+        parameterId: saleContext.parameterId,
       },
       voucher: {
         id: createdSale.voucher.id,
@@ -1086,8 +1098,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         identityCardCustomer: createdSale.voucher.identityCardCustomer,
         paymentLocation: createdSale.voucher.paymentLocation,
         receiptNumber: createdSale.voucher.receiptNumber,
+        fileNumber: createdSale.voucher.fileNumber,
         description: createdSale.voucher.description,
-        paymentTypeId: validation.paymentTypeId,
+        paymentTypeId: saleContext.paymentTypeId,
         paymentTypeState: createdSale.voucher.paymentTypeState,
         depositDate: createdSale.voucher.depositDate
           ? this.formatDate(createdSale.voucher.depositDate)
@@ -1495,23 +1508,23 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const validation = await this.validateSaleInput(salePayload);
+    const saleContext = await this.validateSaleInput(salePayload);
 
-    if (validation.error) {
+    if (saleContext.error) {
       const data = {
         qrId: qrPayment.qrId,
         notification,
-        validation,
+        saleContext,
       };
 
       return {
         error: true,
-        message: validation.message,
+        message: saleContext.message,
         data,
       };
     }
 
-    if (!this.isQrPaymentType(validation.paymentType)) {
+    if (!this.isQrPaymentType(saleContext.paymentType)) {
       const data = { qrId: qrPayment.qrId, notification };
 
       return {
@@ -1528,18 +1541,19 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     const qrGlosa =
       storedQrGlosa ||
       this.normalizeBcbText(
-        `Venta QR ${validation.normalizedProducts
+        `${saleContext.normalizedProducts
           .map((product: NormalizedSaleProductDto) => product.name)
           .join(',')}`,
       );
 
     const createdSale = await this.createSaleRecords({
-      validation,
+      saleContext,
       voucher: {
         customer: notification.nombreOriginante?.trim(),
         identityCardCustomer: notification.ciNitOriginante?.trim(),
         paymentLocation: notification.eifOrigen, // analizar
         receiptNumber: notification.idOrdenDestinatario,
+        fileNumber: salePayload.fileNumber,
         description: qrGlosa,
         depositDate,
       },
@@ -1596,6 +1610,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           total: true,
           customer: true,
           identityCardCustomer: true,
+          fileNumber: true,
           depositDate: true,
           paymentType: {
             id: true,
@@ -1923,6 +1938,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       personId: storedData.personId ?? qrPayment.personId,
       parameterId: storedData.parameterId,
       receptionist: storedData.receptionist,
+      fileNumber: storedData.fileNumber,
       saleProducts: Array.isArray(storedData.saleProducts)
         ? storedData.saleProducts.map((saleProduct) => ({
             code: saleProduct?.code,
@@ -1960,6 +1976,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         : '';
     const paymentTypeId = Number(storedData?.paymentTypeId);
     const parameterId = Number(storedData?.parameterId);
+    const fileNumber =
+      typeof storedData?.fileNumber === 'string'
+        ? storedData.fileNumber.trim()
+        : '';
     const saleProducts = this.parseStoredQrSaleProducts(
       storedData.saleProducts,
     );
@@ -1972,6 +1992,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       paymentTypeId <= 0 ||
       !Number.isInteger(parameterId) ||
       parameterId <= 0 ||
+      !fileNumber ||
       !saleProducts
     ) {
       return null;
@@ -1982,6 +2003,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       receptionist,
       paymentTypeId,
       parameterId,
+      fileNumber,
       saleProducts,
     };
   }
@@ -2538,8 +2560,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       codMoneda: qrData.codMoneda.trim(),
       importe,
       glosa: this.normalizeBcbText(
-        qrData.glosa?.trim() || (sale.id ? `Venta ${sale.id}` : 'Venta QR'),
-      ),
+        qrData.glosa?.trim()),
       fechaVencimiento: qrData.fechaVencimiento.trim(),
       unicoUso: qrData.unicoUso,
       codigoServicio: qrData.codigoServicio.trim(),
@@ -2677,6 +2698,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           identityCardCustomer: true,
           paymentLocation: true,
           receiptNumber: true,
+          fileNumber: true,
           description: true,
           paymentTypeState: true,
           depositDate: true,
@@ -2755,6 +2777,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       },
       voucher: {
         receiptNumber: voucher.receiptNumber,
+        fileNumber: voucher.fileNumber,
         description: voucher.description,
         paymentTypeState: voucher.paymentTypeState,
         depositDate: voucher.depositDate
