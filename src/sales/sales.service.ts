@@ -33,6 +33,7 @@ import {
   AccountLookupDataDto,
   BcbPaymentNotificationDto,
   BcbQrDataDto,
+  CreateCollectionTransactionDto,
   CreateSaleDto,
   GenerateQrDto,
   GetQrCodeStatusDto,
@@ -710,6 +711,8 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
             saleProducts: this.mapInputSaleProducts(payload.saleProducts),
             total: validation.saleTotal,
             currency: qrData.codMoneda,
+            accountNumber: qrData.accountNumber,
+            glosa: qrData.glosa,
           },
           qrStatus: QrPaymentStatus.PENDIENTE,
           expirationDateQr,
@@ -772,18 +775,20 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         };
       }
 
+      const voucher = {
+        customer: payload.voucher.customer.trim() || null,
+        identityCardCustomer:
+          payload.voucher.identityCardCustomer.trim() || null,
+        paymentLocation: payload.voucher.paymentLocation,
+        receiptNumber: payload.voucher.receiptNumber?.trim() || null,
+        description: payload.voucher.description?.trim() || null,
+        depositDate:
+          this.parseOptionalDate(payload.voucher.depositDate) ?? new Date(),
+      };
+
       const createdSale = await this.createSaleRecords({
         validation,
-        voucher: {
-          customer: payload.voucher.customer.trim() || null,
-          identityCardCustomer:
-            payload.voucher.identityCardCustomer.trim() || null,
-          paymentLocation: payload.voucher.paymentLocation,
-          receiptNumber: payload.voucher.receiptNumber?.trim() || null,
-          description: payload.voucher.description?.trim() || null,
-          depositDate:
-            this.parseOptionalDate(payload.voucher.depositDate) ?? new Date(),
-        },
+        voucher,
       });
 
       return this.buildCreateSaleResponse(payload, validation, createdSale);
@@ -798,11 +803,142 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async registerCollectionTransaction(
+    validation: any,
+    paymentDate: Date,
+    description?: string | null,
+    accountNumber?: string,
+  ): Promise<any> {
+    try {
+      const resolvedAccountNumber =
+        accountNumber?.trim() ||
+        (await this.resolveCollectionAccountNumber(validation));
+      const transaction: CreateCollectionTransactionDto = {
+        paymentDate: this.formatDate(paymentDate),
+        receiveName: this.formatPersonName(validation.person.fullName),
+        description,
+        origin: 'SALES',
+        accountNumber: resolvedAccountNumber,
+        paymentType: validation.paymentType.name,
+        total: validation.saleTotal,
+        state: 'NO CONCILIADO',
+      };
+      const response: any = await this.nats.firstValue(
+        'collections.add',
+        transaction,
+      );
+
+      if (!response?.serviceStatus) {
+        return {
+          error: true,
+          message:
+            'No se pudo registrar la cobranza porque Collections no está disponible.',
+          transactionId: null,
+        };
+      }
+
+      if (response.error) {
+        return {
+          error: true,
+          message:
+            response.message ?? 'Collections no pudo registrar la cobranza.',
+          transactionId: null,
+        };
+      }
+
+      const transactionId = String(response.data?.id ?? '').trim();
+
+      if (!transactionId) {
+        return {
+          error: true,
+          message:
+            'Collections registró una respuesta sin identificador de transacción.',
+          transactionId: null,
+        };
+      }
+
+      return {
+        error: false,
+        message:
+          response.message ??
+          'Transacción de cobranza registrada correctamente',
+        transactionId,
+        accountNumber: resolvedAccountNumber,
+      };
+    } catch (error) {
+      this.logError('Error al registrar la transacción en Collections', error);
+
+      return {
+        error: true,
+        message: 'Error al registrar la transacción de cobranza.',
+        transactionId: null,
+      };
+    }
+  }
+
+  private async resolveCollectionAccountNumber(
+    validation: any,
+  ): Promise<string> {
+    const accountIds = [
+      ...new Set(
+        validation.products
+          .map((product: Product) => Number(product.group?.accountId))
+          .filter((accountId: number) => Number.isInteger(accountId)),
+      ),
+    ];
+
+    if (accountIds.length !== 1) {
+      throw new Error(
+        'No se puede determinar una única cuenta para registrar la cobranza.',
+      );
+    }
+
+    const response: any = await this.nats.firstValue('accounts.findAllByIds', {
+      ids: accountIds,
+      columns: ['id', 'accountNumber'],
+    });
+    const accounts = Array.isArray(response?.data) ? response.data : [];
+    const accountNumber = String(accounts[0]?.accountNumber ?? '').trim();
+
+    if (!response?.serviceStatus || !accountNumber) {
+      throw new Error(
+        'No se pudo obtener el número de cuenta para registrar la cobranza.',
+      );
+    }
+
+    return accountNumber;
+  }
+
+  private async getSaleProductsDescription(
+    manager: EntityManager,
+    saleId: number,
+  ): Promise<string> {
+    const saleProducts = await manager.getRepository(SaleProduct).find({
+      select: {
+        name: true,
+      },
+      where: {
+        sale: {
+          id: saleId,
+        },
+      },
+      order: {
+        id: 'ASC',
+      },
+    });
+    const productNames = saleProducts
+      .map((saleProduct) => saleProduct.name?.trim())
+      .filter(Boolean);
+
+    return productNames.length > 0
+      ? productNames.join(', ').slice(0, 255)
+      : `Venta ${saleId}`;
+  }
+
   private async createSaleRecords(params: any): Promise<any> {
     const {
       validation,
       voucher,
-      transactionId = null,
       qrPayment = null,
       paymentNotification = null,
     } = params;
@@ -817,7 +953,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           saleState,
           personId: validation.personId,
           receptionist: validation.receptionist,
-          transactionId,
           parameter: validation.parameter,
         }),
       );
@@ -855,10 +990,39 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
       if (qrPayment) {
         qrPayment.qrStatus = QrPaymentStatus.PAGADO;
-        qrPayment.dataResponse = this.buildPaidQrDataResponse(
-          qrPayment,
-          paymentNotification,
-        );
+        qrPayment.dataResponse = {
+          ...this.buildPaidQrDataResponse(qrPayment, paymentNotification),
+          saleId: sale.id,
+        };
+        savedQrPayment = await manager.save(QrPaymentSale, qrPayment);
+      }
+
+      const storedQrData = qrPayment
+        ? this.getStoredQrData(qrPayment)
+        : undefined;
+      const destinationAccountNumber = String(
+        storedQrData?.accountNumber ?? '',
+      ).trim();
+      const collectionDescription = qrPayment
+        ? voucher.description
+        : await this.getSaleProductsDescription(manager, sale.id);
+      const collectionResult = await this.registerCollectionTransaction(
+        validation,
+        voucher.depositDate,
+        collectionDescription,
+        destinationAccountNumber,
+      );
+
+      if (collectionResult.error || !collectionResult.transactionId) {
+        throw new Error(collectionResult.message);
+      }
+
+      if (qrPayment) {
+        qrPayment.dataResponse = {
+          ...this.getStoredQrData(qrPayment),
+          accountNumber: collectionResult.accountNumber,
+          saleId: sale.id,
+        };
         savedQrPayment = await manager.save(QrPaymentSale, qrPayment);
       }
 
@@ -1212,25 +1376,16 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         };
       }
 
-      // POR CONSTRUIR RECUPERA ID DE OTRO MICROSERVICIO
-      const transactionId = null;
-      const existingSaleResult = await this.processExistingBcbSale(
-        qrPayment,
-        notification,
-        transactionId,
-      );
-
-      if (existingSaleResult) {
-        return existingSaleResult;
-      }
-
-      return this.createSaleFromPaidQr(qrPayment, notification, transactionId);
+      return this.createSaleFromPaidQr(qrPayment, notification);
     } catch (error) {
       this.logError('Error al procesar notificación BCB', error);
 
       return {
         error: true,
-        message: 'Error al procesar la notificación BCB.',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Error al procesar la notificación BCB.',
         data: null,
       };
     }
@@ -1323,75 +1478,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async processExistingBcbSale(
-    qrPayment: QrPaymentSale,
-    notification: BcbPaymentNotificationDto,
-    transactionId: string | null,
-  ): Promise<any> {
-    if (!transactionId) {
-      return null;
-    }
-
-    const existingSale = await this.salesRepository.findOne({
-      where: { transactionId },
-    });
-
-    if (!existingSale) {
-      return null;
-    }
-
-    const [existingVoucher, existingSaleProducts] = await Promise.all([
-      this.dataSource.getRepository(Voucher).findOne({
-        select: { id: true },
-        where: { sale: { id: existingSale.id } },
-      }),
-      this.saleProductsRepository.find({
-        select: { id: true },
-        where: { sale: { id: existingSale.id } },
-      }),
-    ]);
-
-    if (!existingVoucher || existingSaleProducts.length === 0) {
-      const data = {
-        qrId: qrPayment.qrId,
-        saleId: existingSale.id,
-        transactionId,
-      };
-
-      return {
-        error: true,
-        message:
-          'La transacción BCB ya tiene una venta, pero sus registros están incompletos.',
-        data,
-      };
-    }
-
-    qrPayment.qrStatus = QrPaymentStatus.PAGADO;
-    qrPayment.dataResponse = this.buildPaidQrDataResponse(
-      qrPayment,
-      notification,
-    );
-    await this.qrPaymentSaleRepository.save(qrPayment);
-    await this.removeTemporaryQrImage(qrPayment.qrId);
-
-    const data = {
-      qrId: qrPayment.qrId,
-      saleId: existingSale.id,
-      transactionId,
-      notification,
-    };
-
-    return {
-      error: false,
-      message: 'La venta ya fue creada para esta transacción BCB.',
-      data,
-    };
-  }
-
   private async createSaleFromPaidQr(
     qrPayment: QrPaymentSale,
     notification: BcbPaymentNotificationDto,
-    transactionId: string | null,
   ): Promise<any> {
     const salePayload = this.buildSalePayloadFromQrPayment(qrPayment);
 
@@ -1432,16 +1521,27 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
+    const depositDate = new Date();
+    const storedQrData = this.getStoredQrData(qrPayment);
+    const storedQrGlosa =
+      typeof storedQrData.glosa === 'string' ? storedQrData.glosa.trim() : '';
+    const qrGlosa =
+      storedQrGlosa ||
+      this.normalizeBcbText(
+        `Venta QR ${validation.normalizedProducts
+          .map((product: NormalizedSaleProductDto) => product.name)
+          .join(',')}`,
+      );
+
     const createdSale = await this.createSaleRecords({
       validation,
-      transactionId,
       voucher: {
         customer: notification.nombreOriginante?.trim(),
         identityCardCustomer: notification.ciNitOriginante?.trim(),
         paymentLocation: notification.eifOrigen, // analizar
         receiptNumber: notification.idOrdenDestinatario,
-        description: null,
-        depositDate: new Date(),
+        description: qrGlosa,
+        depositDate,
       },
       qrPayment,
       paymentNotification: notification,
@@ -1818,6 +1918,8 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     const data = {
       total: storedData.total,
       currency: storedData.currency,
+      accountNumber: storedData.accountNumber,
+      glosa: storedData.glosa,
       personId: storedData.personId ?? qrPayment.personId,
       parameterId: storedData.parameterId,
       receptionist: storedData.receptionist,
