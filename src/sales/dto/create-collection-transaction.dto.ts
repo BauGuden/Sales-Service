@@ -1,10 +1,17 @@
-export class CreateCollectionTransactionDto {
+export enum CollectionState {
+  COINCILIADO = 'COINCILIADO',
+  NO_COINCILIADO = 'NO COINCILIADO',
+}
+
+export interface CreateCollectionTransactionDto {
   paymentDate: string;
-  receiveName: string;
+  titularName: string;
+  payerName: string;
   description: string;
   origin: string;
   accountNumber: string;
   paymentType: string;
+  receptionistUser: string;
   total: number;
-  state: string;
+  state: CollectionState;
 }

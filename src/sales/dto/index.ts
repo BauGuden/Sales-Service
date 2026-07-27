@@ -1,5 +1,8 @@
 export { AccountLookupDataDto } from './account-lookup-data.dto';
-export { CreateCollectionTransactionDto } from './create-collection-transaction.dto';
+export {
+  CollectionState,
+  CreateCollectionTransactionDto,
+} from './create-collection-transaction.dto';
 export { CreateSaleDto, SaleProductDto } from './create-sale.dto';
 export { GroupDataDto } from './group-data.dto';
 export { NormalizedSaleProductDto } from './normalized-sale-product.dto';
