@@ -3073,4 +3073,24 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
     return Number.isNaN(date.getTime()) ? null : date;
   }
+
+  async getPersonSalesRecords(personId: number): Promise<any> {
+    const { serviceStatus, data } = await this.nats.firstValue('sales.record.findPerson', {
+      personId,
+    });
+
+    if (!serviceStatus) {
+      return {
+        error: true,
+        message: 'Servicio de Registros de ventas no disponible',
+        data: [],
+      };
+    }
+
+    return {
+      error: false,
+      message: 'Historial de ventas obtenido',
+      data,
+    };
+  }
 }

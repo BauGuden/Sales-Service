@@ -102,4 +102,9 @@ export class SalesController {
   async salesList(@Payload() filters: SalesListDto) {
     return this.salesService.salesList(filters);
   }
+
+  @MessagePattern('sales.personSalesRecords')
+  async getPersonSalesRecords(@Payload('personId', ParseIntPipe) personId: number) {
+    return this.salesService.getPersonSalesRecords(personId);
+  }
 }
