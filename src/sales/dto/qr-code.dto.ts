@@ -86,10 +86,10 @@ export class GenerateQrDto {
   @IsPositive()
   parameterId: number;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(50)
-  fileNumber: string;
+  fileNumber?: string;
 
   @IsArray()
   @ArrayMinSize(1)

@@ -709,7 +709,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
             receptionist: saleContext.receptionist,
             paymentTypeId: saleContext.paymentTypeId,
             parameterId: saleContext.parameterId,
-            fileNumber: payload.fileNumber.trim(),
+            fileNumber: payload.fileNumber?.trim() || null,
             saleProducts: this.mapInputSaleProducts(payload.saleProducts),
             total: saleContext.saleTotal,
             currency: qrData.codMoneda,
@@ -729,7 +729,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         ctaDestino: qrData.ctaDestino,
         fechaVencimientoQR: qrData.fechaVencimientoQR,
         bcbQrId: qrId,
-        fileNumber: payload.fileNumber.trim(),
+        fileNumber: payload.fileNumber?.trim() || null,
         total: saleContext.saleTotal,
         qrImage,
         qrStatus: QrPaymentStatus.PENDIENTE,
@@ -784,7 +784,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           payload.voucher.identityCardCustomer.trim() || null,
         paymentLocation: payload.voucher.paymentLocation,
         receiptNumber: payload.voucher.receiptNumber?.trim() || null,
-        fileNumber: payload.voucher.fileNumber.trim(),
+        fileNumber: payload.voucher.fileNumber?.trim() || null,
         description: payload.voucher.description?.trim() || null,
         depositDate:
           this.parseOptionalDate(payload.voucher.depositDate) ?? new Date(),
@@ -1553,7 +1553,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         identityCardCustomer: notification.ciNitOriginante?.trim(),
         paymentLocation: notification.eifOrigen, // analizar
         receiptNumber: notification.idOrdenDestinatario,
-        fileNumber: salePayload.fileNumber,
+        fileNumber: salePayload.fileNumber ?? null,
         description: qrGlosa,
         depositDate,
       },
@@ -1978,8 +1978,8 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     const parameterId = Number(storedData?.parameterId);
     const fileNumber =
       typeof storedData?.fileNumber === 'string'
-        ? storedData.fileNumber.trim()
-        : '';
+        ? storedData.fileNumber.trim() || undefined
+        : undefined;
     const saleProducts = this.parseStoredQrSaleProducts(
       storedData.saleProducts,
     );
@@ -1992,7 +1992,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       paymentTypeId <= 0 ||
       !Number.isInteger(parameterId) ||
       parameterId <= 0 ||
-      !fileNumber ||
       !saleProducts
     ) {
       return null;

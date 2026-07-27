@@ -39,8 +39,8 @@ export class Voucher {
   @Column({ name: 'receipt_number', length: 50, nullable: true })
   receiptNumber: string | null;
 
-  @Column({ name: 'file_number', length: 50 })
-  fileNumber: string;
+  @Column({ name: 'file_number', length: 50, nullable: true })
+  fileNumber: string | null;
 
   @Column({ length: 255, nullable: true })
   description: string | null;
