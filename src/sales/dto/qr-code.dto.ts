@@ -86,6 +86,11 @@ export class GenerateQrDto {
   @IsPositive()
   parameterId: number;
 
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  fileNumber: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

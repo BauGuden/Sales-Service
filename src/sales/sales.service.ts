@@ -709,6 +709,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
             receptionist: saleContext.receptionist,
             paymentTypeId: saleContext.paymentTypeId,
             parameterId: saleContext.parameterId,
+            fileNumber: payload.fileNumber.trim(),
             saleProducts: this.mapInputSaleProducts(payload.saleProducts),
             total: saleContext.saleTotal,
             currency: qrData.codMoneda,
@@ -728,6 +729,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         ctaDestino: qrData.ctaDestino,
         fechaVencimientoQR: qrData.fechaVencimientoQR,
         bcbQrId: qrId,
+        fileNumber: payload.fileNumber.trim(),
         total: saleContext.saleTotal,
         qrImage,
         qrStatus: QrPaymentStatus.PENDIENTE,
@@ -782,6 +784,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           payload.voucher.identityCardCustomer.trim() || null,
         paymentLocation: payload.voucher.paymentLocation,
         receiptNumber: payload.voucher.receiptNumber?.trim() || null,
+        fileNumber: payload.voucher.fileNumber.trim(),
         description: payload.voucher.description?.trim() || null,
         depositDate:
           this.parseOptionalDate(payload.voucher.depositDate) ?? new Date(),
@@ -972,6 +975,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           identityCardCustomer: voucher.identityCardCustomer,
           paymentLocation: voucher.paymentLocation,
           receiptNumber: voucher.receiptNumber ?? null,
+          fileNumber: voucher.fileNumber ?? null,
           description: voucher.description ?? null,
           paymentType: saleContext.paymentType,
           paymentTypeState: PaymentTypeState.PAGADO,
@@ -1021,6 +1025,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       if (collectionResult.error || !collectionResult.transactionId) {
         throw new Error(collectionResult.message);
       }
+
+      sale.transactionId = collectionResult.transactionId;
+      await manager.save(Sale, sale);
 
       if (qrPayment) {
         qrPayment.dataResponse = {
@@ -1091,6 +1098,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         identityCardCustomer: createdSale.voucher.identityCardCustomer,
         paymentLocation: createdSale.voucher.paymentLocation,
         receiptNumber: createdSale.voucher.receiptNumber,
+        fileNumber: createdSale.voucher.fileNumber,
         description: createdSale.voucher.description,
         paymentTypeId: saleContext.paymentTypeId,
         paymentTypeState: createdSale.voucher.paymentTypeState,
@@ -1533,7 +1541,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     const qrGlosa =
       storedQrGlosa ||
       this.normalizeBcbText(
-        `Venta QR ${saleContext.normalizedProducts
+        `${saleContext.normalizedProducts
           .map((product: NormalizedSaleProductDto) => product.name)
           .join(',')}`,
       );
@@ -1545,6 +1553,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         identityCardCustomer: notification.ciNitOriginante?.trim(),
         paymentLocation: notification.eifOrigen, // analizar
         receiptNumber: notification.idOrdenDestinatario,
+        fileNumber: salePayload.fileNumber,
         description: qrGlosa,
         depositDate,
       },
@@ -1601,6 +1610,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           total: true,
           customer: true,
           identityCardCustomer: true,
+          fileNumber: true,
           depositDate: true,
           paymentType: {
             id: true,
@@ -1928,6 +1938,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       personId: storedData.personId ?? qrPayment.personId,
       parameterId: storedData.parameterId,
       receptionist: storedData.receptionist,
+      fileNumber: storedData.fileNumber,
       saleProducts: Array.isArray(storedData.saleProducts)
         ? storedData.saleProducts.map((saleProduct) => ({
             code: saleProduct?.code,
@@ -1965,6 +1976,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         : '';
     const paymentTypeId = Number(storedData?.paymentTypeId);
     const parameterId = Number(storedData?.parameterId);
+    const fileNumber =
+      typeof storedData?.fileNumber === 'string'
+        ? storedData.fileNumber.trim()
+        : '';
     const saleProducts = this.parseStoredQrSaleProducts(
       storedData.saleProducts,
     );
@@ -1977,6 +1992,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       paymentTypeId <= 0 ||
       !Number.isInteger(parameterId) ||
       parameterId <= 0 ||
+      !fileNumber ||
       !saleProducts
     ) {
       return null;
@@ -1987,6 +2003,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       receptionist,
       paymentTypeId,
       parameterId,
+      fileNumber,
       saleProducts,
     };
   }
@@ -2543,8 +2560,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       codMoneda: qrData.codMoneda.trim(),
       importe,
       glosa: this.normalizeBcbText(
-        qrData.glosa?.trim() || (sale.id ? `Venta ${sale.id}` : 'Venta QR'),
-      ),
+        qrData.glosa?.trim()),
       fechaVencimiento: qrData.fechaVencimiento.trim(),
       unicoUso: qrData.unicoUso,
       codigoServicio: qrData.codigoServicio.trim(),
@@ -2682,6 +2698,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           identityCardCustomer: true,
           paymentLocation: true,
           receiptNumber: true,
+          fileNumber: true,
           description: true,
           paymentTypeState: true,
           depositDate: true,
@@ -2760,6 +2777,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       },
       voucher: {
         receiptNumber: voucher.receiptNumber,
+        fileNumber: voucher.fileNumber,
         description: voucher.description,
         paymentTypeState: voucher.paymentTypeState,
         depositDate: voucher.depositDate
