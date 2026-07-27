@@ -656,7 +656,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
   async generateQr(payload: GenerateQrDto): Promise<any> {
     try {
       await this.expirePendingQrPayments();
-
       
       const saleContext = await this.validateSaleInput(payload);
 
@@ -905,7 +904,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async getSaleProductsDescription(
-    manager: EntityManager, // q hace el manager; lo q hace es permitirnos hacer consultas a la base de datos dentro de una transacción. Es como un intermediario que nos ayuda a interactuar con la base de datos de manera segura y controlada.
+    manager: EntityManager,
     saleId: number,
   ): Promise<string> {
     const saleProducts = await manager.getRepository(SaleProduct).find({
