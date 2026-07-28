@@ -1,9 +1,12 @@
 import {
+  BadRequestException,
+  HttpStatus,
   Injectable,
   Logger,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { RpcException } from '@nestjs/microservices';
 import { InjectRepository } from '@nestjs/typeorm';
 import { NatsService } from 'src/common';
 import {
@@ -2661,13 +2664,16 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     try {
       return await this.buildVoucherPdfResponse(saleId);
     } catch (error) {
+      if (error instanceof RpcException) {
+        throw error;
+      }
+
       this.logError(`Error al obtener el detalle de la venta ${saleId}`, error);
 
-      return {
-        error: true,
+      throw new RpcException({
+        code: HttpStatus.INTERNAL_SERVER_ERROR,
         message: 'Error al obtener el detalle de la venta.',
-        data: null,
-      };
+      });
     }
   }
 
@@ -2721,33 +2727,30 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!sale) {
-      return {
-        error: true,
-        message: 'No se encontró la venta solicitada.',
-        data: null,
-      };
+      throw new RpcException({
+        code: HttpStatus.NOT_FOUND,
+        message: `La venta con el ID ${saleId} no existe.`,
+      });
     }
 
     const voucher = sale.voucher as unknown as Voucher | null;
 
     if (!voucher) {
-      return {
-        error: true,
+      throw new RpcException({
+        code: HttpStatus.NOT_FOUND,
         message: 'La venta no tiene comprobante asociado.',
-        data: null,
-      };
+      });
     }
 
     const personResult = await this.personDetailsById(sale.personId);
 
     if (personResult.error || !personResult.data) {
-      return {
-        error: true,
+      throw new RpcException({
+        code: HttpStatus.NOT_FOUND,
         message:
           personResult.message ??
           'No se pudieron obtener los datos del titular de la venta.',
-        data: null,
-      };
+      });
     }
 
     const principalCustomer = personResult.data;
@@ -2829,6 +2832,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     try {
       return await this.buildSalesListResponse(filters);
     } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
       this.logError('Error al obtener el listado de ventas', error);
 
       return {
@@ -2843,7 +2850,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     const page = filters.page ?? 1;
     const hasLimit = filters.limit !== undefined && filters.limit !== null;
     const normalizedLimit = filters.limit ?? 0;
-    const dateRange = this.buildVoucherCreatedAtRange(
+    const dateRange = this.validateSalesListDateRange(
       filters.dateFrom,
       filters.dateTo,
     );
@@ -3022,7 +3029,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     return Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
   }
 
-  private buildVoucherCreatedAtRange(
+  private validateSalesListDateRange(
     dateFrom?: string,
     dateTo?: string,
   ): {
@@ -3033,24 +3040,17 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     const to = this.parseReportDate(dateTo, 'end');
 
     if (dateFrom && !from) {
-      return {
-        from: null,
-        to: null,
-      };
+      throw new BadRequestException(`dateFrom "${dateFrom}" no es una fecha válida.`);
     }
 
     if (dateTo && !to) {
-      return {
-        from: null,
-        to: null,
-      };
+      throw new BadRequestException(`dateTo "${dateTo}" no es una fecha válida.`);
     }
 
     if (from && to && from.getTime() > to.getTime()) {
-      return {
-        from: null,
-        to: null,
-      };
+      throw new BadRequestException(
+        `dateFrom "${dateFrom}" no puede ser posterior a dateTo "${dateTo}".`,
+      );
     }
 
     return {
