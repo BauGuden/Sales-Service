@@ -599,7 +599,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             name: 'file_number',
             type: 'varchar',
             length: '50',
-            isNullable: false,
+            isNullable: true,
           },
           {
             name: 'description',

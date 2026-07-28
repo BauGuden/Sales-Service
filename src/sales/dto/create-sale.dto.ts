@@ -57,10 +57,10 @@ export class saleVoucherDto {
   @MaxLength(50)
   receiptNumber?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(50)
-  fileNumber: string;
+  fileNumber?: string;
 
   @IsOptional()
   @IsString()
