@@ -2343,7 +2343,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       },
       codMoneda: 'BOB',
       glosa: this.normalizeBcbText(
-        `Venta QR ${saleProducts.map((product) => product.name).join(',')}`,
+        `${saleProducts.map((product) => product.name).join(',')}`,
       ),
       fechaVencimiento,
       unicoUso: true,
@@ -2977,8 +2977,8 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         dateTo: dateRange.to ? this.formatDate(dateRange.to) : null,
       },
       metadata: {
-        source: 'Sales-Service',
-        generatedFor: 'sales-list',
+        source: 'Sales',
+        generatedFor: 'reportSales',
         generatedAt: this.formatDate(new Date()),
       },
     };
