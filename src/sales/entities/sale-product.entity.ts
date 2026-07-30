@@ -16,7 +16,9 @@ export class SaleProduct {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => Sale, (sale) => sale.saleProducts, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Sale, (sale) => sale.saleProducts, {
+    onDelete: 'NO ACTION',
+  })
   @JoinColumn({ name: 'sale_id' })
   sale: Sale;
 

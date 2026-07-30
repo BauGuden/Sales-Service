@@ -486,7 +486,6 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             type: 'varchar',
             length: '20',
             isNullable: true,
-            isUnique: true,
           },
           {
             name: 'sale_state',
@@ -598,7 +597,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
           {
             name: 'file_number',
             type: 'varchar',
-            length: '50',
+            length: '20',
             isNullable: true,
           },
           {
@@ -657,7 +656,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
         referencedSchema: this.schema,
         referencedTableName: 'sales',
         referencedColumnNames: ['id'],
-        onDelete: 'CASCADE',
+        onDelete: 'NO ACTION',
         onUpdate: 'NO ACTION',
       }),
       new TableForeignKey({
@@ -835,7 +834,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
         referencedSchema: this.schema,
         referencedTableName: 'sales',
         referencedColumnNames: ['id'],
-        onDelete: 'CASCADE',
+        onDelete: 'NO ACTION',
         onUpdate: 'NO ACTION',
       }),
     ]);
