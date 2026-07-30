@@ -53,6 +53,8 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
   private readonly qrTempPath = 'temporalqr';
   private readonly qrExpirationMinutes = 15;
   private readonly qrExpirationSweepIntervalMs = 30_000;
+  private readonly businessTimeZone = 'America/La_Paz';
+  private readonly folderProductIds = new Set([1, 2, 3, 4]);
   private qrExpirationTimer: NodeJS.Timeout | null = null;
   private qrExpirationSweepRunning = false;
 
@@ -712,7 +714,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
             receptionist: saleContext.receptionist,
             paymentTypeId: saleContext.paymentTypeId,
             parameterId: saleContext.parameterId,
-            fileNumber: payload.fileNumber?.trim() || null,
             saleProducts: this.mapInputSaleProducts(payload.saleProducts),
             total: saleContext.saleTotal,
             currency: qrData.codMoneda,
@@ -732,7 +733,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         ctaDestino: qrData.ctaDestino,
         fechaVencimientoQR: qrData.fechaVencimientoQR,
         bcbQrId: qrId,
-        fileNumber: payload.fileNumber?.trim() || null,
         total: saleContext.saleTotal,
         qrImage,
         qrStatus: QrPaymentStatus.PENDIENTE,
@@ -787,7 +787,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           payload.voucher.identityCardCustomer.trim() || null,
         paymentLocation: payload.voucher.paymentLocation,
         receiptNumber: payload.voucher.receiptNumber?.trim() || null,
-        fileNumber: payload.voucher.fileNumber?.trim() || null,
         description: payload.voucher.description?.trim() || null,
         depositDate:
           this.parseOptionalDate(payload.voucher.depositDate) ?? new Date(),
@@ -945,7 +944,8 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
     return this.dataSource.transaction(async (manager) => {
       const saleState = SaleState.VIGENTE;
-      const code = await this.generateNextSaleCode(manager);
+      const management = this.getCurrentManagement();
+      const code = await this.generateNextSaleCode(manager, management);
 
       const sale = await manager.save(
         manager.create(Sale, {
@@ -970,6 +970,11 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         });
       });
       const savedSaleProducts = await manager.save(SaleProduct, saleProducts);
+      const fileNumber = await this.generateNextFileNumber(
+        manager,
+        saleContext.normalizedProducts,
+        management,
+      );
 
       const savedVoucher = await manager.save(
         manager.create(Voucher, {
@@ -978,7 +983,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           identityCardCustomer: voucher.identityCardCustomer,
           paymentLocation: voucher.paymentLocation,
           receiptNumber: voucher.receiptNumber ?? null,
-          fileNumber: voucher.fileNumber ?? null,
+          fileNumber,
           description: voucher.description ?? null,
           paymentType: saleContext.paymentType,
           paymentTypeState: PaymentTypeState.PAGADO,
@@ -993,6 +998,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         qrPayment.qrStatus = QrPaymentStatus.PAGADO;
         qrPayment.dataResponse = {
           ...this.buildPaidQrDataResponse(qrPayment, paymentNotification),
+          fileNumber,
           saleId: sale.id,
         };
         savedQrPayment = await manager.save(QrPaymentSale, qrPayment);
@@ -1050,17 +1056,38 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async generateNextSaleCode(manager: EntityManager): Promise<string> {
+  private async generateNextSaleCode(
+    manager: EntityManager,
+    management: string,
+  ): Promise<string> {
     const saleTablePath = manager.getRepository(Sale).metadata.tablePath;
 
     await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-      `${saleTablePath}:code`,
+      `${saleTablePath}:code:${management}`,
     ]);
 
     const result = await manager
       .createQueryBuilder(Sale, 'sale')
-      .select('COALESCE(MAX(CAST(sale.code AS BIGINT)), 0)', 'maxCode')
-      .where("sale.code ~ '^[0-9]+$'")
+      .withDeleted()
+      .select(
+        'COALESCE(MAX(CAST(SUBSTRING(sale.code FROM 1 FOR 8) AS BIGINT)), 0)',
+        'maxCode',
+      )
+      .where(
+        `(
+           sale.code ~ :numericCodePattern
+           AND EXTRACT(YEAR FROM sale.createdAt AT TIME ZONE :timeZone) = :management
+         )
+         OR (
+           sale.code ~ :annualCodePattern
+         )`,
+        {
+          numericCodePattern: '^[0-9]{8}$',
+          annualCodePattern: `^[0-9]{8} / ${management}$`,
+          timeZone: this.businessTimeZone,
+          management,
+        },
+      )
       .getRawOne<{ maxCode: string }>();
 
     const nextCode = Number(result?.maxCode ?? 0) + 1;
@@ -1070,6 +1097,100 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     }
 
     return String(nextCode).padStart(8, '0');
+  }
+
+  private getCurrentManagement(): string {
+    return this.getManagementFromDate(new Date());
+  }
+
+  private getManagementFromDate(date: Date | string): string {
+    const parsedDate = date instanceof Date ? date : new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      throw new Error('No se pudo determinar la gestión de la venta.');
+    }
+
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      timeZone: this.businessTimeZone,
+    }).format(parsedDate);
+  }
+
+  private formatSaleCode(
+    code: string | null | undefined,
+    createdAt: Date | string,
+  ): string | null {
+    if (!code?.trim()) {
+      return null;
+    }
+
+    const storedCode = code.trim();
+    const numericCode =
+      storedCode.match(/^([0-9]{8})(?:\s*\/\s*[0-9]{4})?$/)?.[1] ??
+      storedCode;
+
+    return `${numericCode} / ${this.getManagementFromDate(createdAt)}`;
+  }
+
+  private async generateNextFileNumber(
+    manager: EntityManager,
+    saleProducts: NormalizedSaleProductDto[],
+    management: string,
+  ): Promise<string | null> {
+    const folderProductIds = saleProducts
+      .map((saleProduct) => saleProduct.productId)
+      .filter((productId) => this.folderProductIds.has(productId));
+
+    if (folderProductIds.length === 0) {
+      return null;
+    }
+
+    if (folderProductIds.length > 1) {
+      throw new Error(
+        'No se puede generar un único número de folder para varios tipos de folder.',
+      );
+    }
+
+    const productId = folderProductIds[0];
+    const voucherTablePath = manager.getRepository(Voucher).metadata.tablePath;
+
+    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `${voucherTablePath}:file-number:${productId}:${management}`,
+    ]);
+
+    const result = await manager
+      .createQueryBuilder(Voucher, 'voucher')
+      .withDeleted()
+      .innerJoin('voucher.sale', 'sale')
+      .innerJoin('sale.saleProducts', 'saleProduct')
+      .innerJoin('saleProduct.product', 'product')
+      .select(
+        'COALESCE(MAX(CAST(voucher.fileNumber AS BIGINT)), 0)',
+        'maxFileNumber',
+      )
+      .where('product.id = :productId', { productId })
+      .andWhere("voucher.fileNumber ~ '^[0-9]+$'")
+      .andWhere(
+        'EXTRACT(YEAR FROM voucher.createdAt AT TIME ZONE :timeZone) = :management',
+        {
+          timeZone: this.businessTimeZone,
+          management,
+        },
+      )
+      .getRawOne<{ maxFileNumber: string }>();
+
+    const nextFileNumber = Number(result?.maxFileNumber ?? 0) + 1;
+
+    if (
+      !Number.isSafeInteger(nextFileNumber) ||
+      nextFileNumber > 99_999_999
+    ) {
+      throw new Error(
+        `Se alcanzó el límite de números de folder para el producto ${productId}.`,
+      );
+    }
+
+    return String(nextFileNumber).padStart(8, '0');
   }
 
   private buildCreateSaleResponse(
@@ -1087,7 +1208,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       },
       sales: {
         id: createdSale.sale.id,
-        code: createdSale.sale.code,
+        code: this.formatSaleCode(
+          createdSale.sale.code,
+          createdSale.sale.createdAt,
+        ),
         saleState: createdSale.sale.saleState,
         personId: createdSale.sale.personId,
         receptionist: createdSale.sale.receptionist,
@@ -1556,7 +1680,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         identityCardCustomer: notification.ciNitOriginante?.trim(),
         paymentLocation: notification.eifOrigen, // analizar
         receiptNumber: notification.idOrdenDestinatario,
-        fileNumber: salePayload.fileNumber ?? null,
         description: qrGlosa,
         depositDate,
       },
@@ -1644,6 +1767,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
         return {
           ...sale,
+          code: this.formatSaleCode(sale.code, sale.createdAt),
           createdAt: this.formatDate(sale.createdAt),
           voucher: voucher
             ? {
@@ -1941,7 +2065,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       personId: storedData.personId ?? qrPayment.personId,
       parameterId: storedData.parameterId,
       receptionist: storedData.receptionist,
-      fileNumber: storedData.fileNumber,
       saleProducts: Array.isArray(storedData.saleProducts)
         ? storedData.saleProducts.map((saleProduct) => ({
             code: saleProduct?.code,
@@ -1979,10 +2102,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         : '';
     const paymentTypeId = Number(storedData?.paymentTypeId);
     const parameterId = Number(storedData?.parameterId);
-    const fileNumber =
-      typeof storedData?.fileNumber === 'string'
-        ? storedData.fileNumber.trim() || undefined
-        : undefined;
     const saleProducts = this.parseStoredQrSaleProducts(
       storedData.saleProducts,
     );
@@ -2005,7 +2124,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       receptionist,
       paymentTypeId,
       parameterId,
-      fileNumber,
       saleProducts,
     };
   }
@@ -2696,6 +2814,12 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           amount: true,
           price: true,
           total: true,
+          product: {
+            id: true,
+            group: {
+              name: true,
+            },
+          },
         },
         voucher: {
           id: true,
@@ -2719,7 +2843,11 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       where: { id: saleId },
       relations: {
         parameter: true,
-        saleProducts: true,
+        saleProducts: {
+          product: {
+            group: true,
+          },
+        },
         voucher: {
           paymentType: true,
         },
@@ -2759,7 +2887,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
     const data = {
       sale: {
-        code: sale.code,
+        code: this.formatSaleCode(sale.code, sale.createdAt),
         state: sale.saleState,
         personId: sale.personId,
         receptionist: sale.receptionist,
@@ -2801,7 +2929,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         symbol: sale.parameter?.currencySymbol ?? null,
       },
       products: products.map((product) => ({
+        productId: product.product.id,
         name: product.name,
+        groupName: product.product.group.name.toUpperCase(),
+        fileNumber: voucher.fileNumber,
         amount: product.amount,
         price: this.formatAmount(product.price),
         total: this.formatAmount(product.total),
@@ -2883,6 +3014,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           sale: {
             id: true,
             code: true,
+            createdAt: true,
             saleState: true,
             personId: true,
             receptionist: true,
@@ -2950,7 +3082,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       );
 
       return {
-        code: sale?.code ?? null,
+        code: sale
+          ? this.formatSaleCode(sale.code, sale.createdAt)
+          : null,
         receptionDate: voucher?.createdAt
           ? this.formatDate(voucher.createdAt)
           : null,

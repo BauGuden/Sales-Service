@@ -59,11 +59,6 @@ export class saleVoucherDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(50)
-  fileNumber?: string;
-
-  @IsOptional()
-  @IsString()
   @MaxLength(255)
   description?: string;
 
