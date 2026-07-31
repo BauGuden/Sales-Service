@@ -25,8 +25,8 @@ export class Sale {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 20, nullable: true })
-  code: string | null;
+  @Column({ length: 20, unique: true })
+  code: string;
 
   @Column({
     name: 'sale_state',
