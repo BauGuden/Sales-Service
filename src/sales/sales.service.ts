@@ -1070,7 +1070,13 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       .createQueryBuilder(Sale, 'sale')
       .withDeleted()
       .select(
-        'COALESCE(MAX(CAST(SUBSTRING(sale.code FROM 1 FOR 8) AS BIGINT)), 0)',
+        `COALESCE(MAX(
+          CASE
+            WHEN sale.code ~ :annualCodePattern
+              THEN CAST(SUBSTRING(sale.code FROM 4 FOR 8) AS BIGINT)
+            ELSE CAST(SUBSTRING(sale.code FROM 1 FOR 8) AS BIGINT)
+          END
+        ), 0)`,
         'maxCode',
       )
       .where(
@@ -1079,11 +1085,15 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
            AND EXTRACT(YEAR FROM sale.createdAt AT TIME ZONE :timeZone) = :management
          )
          OR (
+           sale.code ~ :legacyAnnualCodePattern
+         )
+         OR (
            sale.code ~ :annualCodePattern
          )`,
         {
           numericCodePattern: '^[0-9]{8}$',
-          annualCodePattern: `^[0-9]{8} / ${management}$`,
+          legacyAnnualCodePattern: `^[0-9]{8}\\s*/\\s*${management}$`,
+          annualCodePattern: `^VEN[0-9]{8}/${management}$`,
           timeZone: this.businessTimeZone,
           management,
         },
@@ -1096,7 +1106,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Se alcanzó el límite de códigos de venta de 8 dígitos.');
     }
 
-    return String(nextCode).padStart(8, '0');
+    return `VEN${String(nextCode).padStart(8, '0')}/${management}`;
   }
 
   private getCurrentManagement(): string {
@@ -1125,11 +1135,21 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     }
 
     const storedCode = code.trim();
-    const numericCode =
-      storedCode.match(/^([0-9]{8})(?:\s*\/\s*[0-9]{4})?$/)?.[1] ??
-      storedCode;
+    const currentCode = storedCode.match(/^VEN([0-9]{8})\/([0-9]{4})$/);
 
-    return `${numericCode} / ${this.getManagementFromDate(createdAt)}`;
+    if (currentCode) {
+      return storedCode;
+    }
+
+    const legacyCode = storedCode.match(/^([0-9]{8})(?:\s*\/\s*([0-9]{4}))?$/);
+
+    if (!legacyCode) {
+      return storedCode;
+    }
+
+    const management = legacyCode[2] ?? this.getManagementFromDate(createdAt);
+
+    return `VEN${legacyCode[1]}/${management}`;
   }
 
   private async generateNextFileNumber(

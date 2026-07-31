@@ -3,6 +3,7 @@ import {
   MigrationInterface,
   QueryRunner,
   Table,
+  TableCheck,
   TableForeignKey,
 } from 'typeorm';
 
@@ -83,6 +84,8 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
   private readonly saleStateEnumPath = `"${this.schema}"."${this.saleStateEnumName}"`;
   private readonly paymentTypeStateEnumName = 'payment_type_state_enum';
   private readonly paymentTypeStateEnumPath = `"${this.schema}"."${this.paymentTypeStateEnumName}"`;
+  private readonly qrStatusEnumName = 'qr_status_enum';
+  private readonly qrStatusEnumPath = `"${this.schema}"."${this.qrStatusEnumName}"`;
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.createSchema(this.schema, true);
@@ -152,6 +155,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
       await queryRunner.dropTable(`${this.schema}.groups`, true, true, true);
     }
 
+    await queryRunner.query(`DROP TYPE IF EXISTS ${this.qrStatusEnumPath}`);
     await queryRunner.query(
       `DROP TYPE IF EXISTS ${this.paymentTypeStateEnumPath}`,
     );
@@ -485,7 +489,8 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             name: 'code',
             type: 'varchar',
             length: '20',
-            isNullable: true,
+            isNullable: false,
+            isUnique: true,
           },
           {
             name: 'sale_state',
@@ -532,6 +537,12 @@ export class CreateSalesSchemaAndCoreTables1763052000000 implements MigrationInt
             type: 'timestamptz',
             isNullable: true,
           },
+        ],
+        checks: [
+          new TableCheck({
+            name: 'CHK_sales_code_format',
+            expression: `"code" ~ '^VEN[0-9]{8}/[0-9]{4}$'`,
+          }),
         ],
       }),
     );
