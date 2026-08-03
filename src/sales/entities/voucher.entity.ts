@@ -5,25 +5,32 @@ export enum PaymentTypeState {
 }
 
 import {
+  Check,
   Column,
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToOne,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { PaymentType } from './payment-type.entity';
 import { Sale } from './sale.entity';
 
 @Entity('vouchers')
+@Check('CHK_vouchers_total_non_negative', '"total" >= 0')
+@Unique('UQ_vouchers_sale_id', ['sale'])
+@Index('IDX_vouchers_payment_type_id', ['paymentType'])
 export class Voucher {
   @PrimaryGeneratedColumn()
   id: number;
 
   @OneToOne(() => Sale, (sale) => sale.voucher, {
+    nullable: false,
     onDelete: 'NO ACTION',
   })
   @JoinColumn({ name: 'sale_id' })
@@ -35,14 +42,11 @@ export class Voucher {
   @Column({ name: 'identity_card_customer', length: 20, nullable: true })
   identityCardCustomer: string | null;
 
-  @Column({ name: 'payment_location', nullable: true })
+  @Column({ name: 'payment_location', length: 255, nullable: true })
   paymentLocation: string | null;
 
   @Column({ name: 'receipt_number', length: 50, nullable: true })
   receiptNumber: string | null;
-
-  @Column({ name: 'file_number', length: 20, nullable: true })
-  fileNumber: string | null;
 
   @Column({ length: 255, nullable: true })
   description: string | null;

@@ -3,6 +3,7 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -15,6 +16,10 @@ export enum QrPaymentStatus {
 }
 
 @Entity('qr_payment_sales')
+@Index('IDX_qr_payment_sales_person_id_expiration_date_qr', [
+  'personId',
+  'expirationDateQr',
+])
 export class QrPaymentSale {
   @PrimaryGeneratedColumn()
   id: number;
@@ -22,7 +27,7 @@ export class QrPaymentSale {
   @Column({ name: 'person_id', type: 'int' })
   personId: number;
 
-  @Column({ name: 'qr_id', length: 50 })
+  @Column({ name: 'qr_id', length: 50, unique: true })
   qrId: string;
 
   @Column({ name: 'data_response', type: 'jsonb' })
@@ -30,8 +35,9 @@ export class QrPaymentSale {
 
   @Column({
     name: 'qr_status',
-    type: 'varchar',
-    length: 20,
+    type: 'enum',
+    enum: QrPaymentStatus,
+    enumName: 'qr_status_enum',
     default: QrPaymentStatus.PENDIENTE,
   })
   qrStatus: QrPaymentStatus;

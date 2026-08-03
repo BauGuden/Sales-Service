@@ -9,6 +9,7 @@ import {
   Product,
   QrPaymentSale,
   Sale,
+  SaleProductFileNumber,
   SaleProduct,
   Voucher,
 } from './entities';
@@ -18,6 +19,7 @@ import {
     TypeOrmModule.forFeature([
       Sale,
       SaleProduct,
+      SaleProductFileNumber,
       Product,
       Parameter,
       Group,

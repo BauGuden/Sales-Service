@@ -1,8 +1,10 @@
 import {
+  Check,
   Column,
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -13,6 +15,8 @@ import { Group } from './group.entity';
 import { SaleProduct } from './sale-product.entity';
 
 @Entity('products')
+@Check('CHK_products_price_non_negative', '"price" >= 0')
+@Index('IDX_products_group_id', ['group'])
 export class Product {
   @PrimaryGeneratedColumn()
   id: number;

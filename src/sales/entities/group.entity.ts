@@ -19,9 +19,13 @@ export class Group {
 
   @Column({ length: 10, unique: true })
   shortened: string;
-  
+
   @Column({ name: 'account_id', type: 'int' })
   accountId: number; // Referencia a contabilidad (Global Service)
+
+  // Columna de cambio si el producto requiere número de folder
+  @Column({ name: 'requires_file_number', type: 'boolean', default: false })
+  requiresFileNumber: boolean;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

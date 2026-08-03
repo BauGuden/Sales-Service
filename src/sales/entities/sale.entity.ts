@@ -5,10 +5,12 @@ export enum SaleState {
 }
 
 import {
+  Check,
   Column,
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -21,6 +23,12 @@ import { SaleProduct } from './sale-product.entity';
 import { Voucher } from './voucher.entity';
 
 @Entity('sales')
+@Check('CHK_sales_code_format', '"code" ~ \'^VEN[0-9]{8}/[0-9]{4}$\'')
+@Index('IDX_sales_parameter_id', ['parameter'])
+@Index('UQ_sales_transaction_id', ['transactionId'], {
+  unique: true,
+  where: '"transaccion_id" IS NOT NULL',
+})
 export class Sale {
   @PrimaryGeneratedColumn()
   id: number;
@@ -43,7 +51,7 @@ export class Sale {
   @Column({ length: 100 })
   receptionist: string;
 
-  @Column({ name: 'transaccion_id', length: 20, nullable: true })
+  @Column({ name: 'transaccion_id', length: 50, nullable: true })
   transactionId: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
@@ -62,7 +70,7 @@ export class Sale {
   parameter: Parameter;
 
   @OneToOne(() => Voucher, (voucher) => voucher.sale)
-  voucher: Voucher[];
+  voucher: Voucher | null;
 
   @OneToMany(() => SaleProduct, (saleProduct) => saleProduct.sale, {
     cascade: true,
