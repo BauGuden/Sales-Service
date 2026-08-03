@@ -3,7 +3,7 @@ export { Parameter } from './parameter.entity';
 export { PaymentType } from './payment-type.entity';
 export { Product } from './product.entity';
 export { QrPaymentSale, QrPaymentStatus } from './qr-payment-sale.entity';
+export { SaleProductFileNumber } from './sale-product-file-number.entity';
 export { SaleProduct } from './sale-product.entity';
 export { Sale, SaleState } from './sale.entity';
 export { PaymentTypeState, Voucher } from './voucher.entity';
-

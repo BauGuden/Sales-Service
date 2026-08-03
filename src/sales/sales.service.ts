@@ -29,6 +29,7 @@ import {
   QrPaymentStatus,
   Sale,
   SaleProduct,
+  SaleProductFileNumber,
   SaleState,
   Voucher,
 } from './entities';
@@ -54,7 +55,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
   private readonly qrExpirationMinutes = 15;
   private readonly qrExpirationSweepIntervalMs = 30_000;
   private readonly businessTimeZone = 'America/La_Paz';
-  private readonly folderProductIds = new Set([1, 2, 3, 4]);
   private qrExpirationTimer: NodeJS.Timeout | null = null;
   private qrExpirationSweepRunning = false;
 
@@ -661,7 +661,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
   async generateQr(payload: GenerateQrDto): Promise<any> {
     try {
       await this.expirePendingQrPayments();
-      
+
       const saleContext = await this.validateSaleInput(payload);
 
       if (saleContext.error) {
@@ -957,24 +957,69 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         }),
       );
 
-      const saleProducts = saleContext.normalizedProducts.map((item: any) => {
-        const product = saleContext.productsById.get(item.productId);
+      const productsForSale: Product[] = saleContext.normalizedProducts.map(
+        (item: NormalizedSaleProductDto) =>
+          saleContext.productsById.get(item.productId),
+      );
+      const saleProducts = saleContext.normalizedProducts.map(
+        (item: NormalizedSaleProductDto, index: number) => {
+          const product = productsForSale[index];
 
-        return manager.create(SaleProduct, {
-          sale,
-          product,
-          name: product.name,
-          price: item.price,
-          amount: item.amount,
-          total: item.total,
-        });
-      });
+          return manager.create(SaleProduct, {
+            sale,
+            product,
+            productId: product.id,
+            name: product.name,
+            price: item.price,
+            amount: item.amount,
+            total: item.total,
+            requiresFileNumber: product.group.requiresFileNumber,
+          });
+        },
+      );
       const savedSaleProducts = await manager.save(SaleProduct, saleProducts);
-      const fileNumber = await this.generateNextFileNumber(
+      const fileNumbersBySaleProduct = await this.generateNextFileNumbers(
         manager,
-        saleContext.normalizedProducts,
+        savedSaleProducts.map((saleProduct) => ({
+          productId: saleProduct.productId,
+          amount: saleProduct.amount,
+          requiresFileNumber: saleProduct.requiresFileNumber,
+        })),
         management,
       );
+      const saleProductFileNumbers = savedSaleProducts.flatMap(
+        (saleProduct, index) =>
+          fileNumbersBySaleProduct[index].map((fileNumber) =>
+            manager.create(SaleProductFileNumber, {
+              saleProduct,
+              saleProductId: saleProduct.id,
+              productId: saleProduct.productId,
+              fileNumber,
+            }),
+          ),
+      );
+      const savedSaleProductFileNumbers = saleProductFileNumbers.length
+        ? await manager.save(SaleProductFileNumber, saleProductFileNumbers)
+        : [];
+      const fileNumbersBySaleProductId = new Map<
+        number,
+        SaleProductFileNumber[]
+      >();
+
+      savedSaleProductFileNumbers.forEach((fileNumber) => {
+        const currentFileNumbers =
+          fileNumbersBySaleProductId.get(fileNumber.saleProductId) ?? [];
+
+        currentFileNumbers.push(fileNumber);
+        fileNumbersBySaleProductId.set(
+          fileNumber.saleProductId,
+          currentFileNumbers,
+        );
+      });
+      savedSaleProducts.forEach((saleProduct) => {
+        saleProduct.fileNumbers =
+          fileNumbersBySaleProductId.get(saleProduct.id) ?? [];
+      });
 
       const savedVoucher = await manager.save(
         manager.create(Voucher, {
@@ -983,7 +1028,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           identityCardCustomer: voucher.identityCardCustomer,
           paymentLocation: voucher.paymentLocation,
           receiptNumber: voucher.receiptNumber ?? null,
-          fileNumber,
           description: voucher.description ?? null,
           paymentType: saleContext.paymentType,
           paymentTypeState: PaymentTypeState.PAGADO,
@@ -998,7 +1042,17 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         qrPayment.qrStatus = QrPaymentStatus.PAGADO;
         qrPayment.dataResponse = {
           ...this.buildPaidQrDataResponse(qrPayment, paymentNotification),
-          fileNumber,
+          saleProducts: savedSaleProducts.map((saleProduct) => ({
+            productId: saleProduct.product.id,
+            code: saleProduct.product.code,
+            name: saleProduct.name,
+            price: String(saleProduct.price),
+            amount: saleProduct.amount,
+            fileNumbers: saleProduct.fileNumbers.map(
+              (fileNumber) => fileNumber.fileNumber,
+            ),
+            fileNumber: saleProduct.fileNumbers[0]?.fileNumber ?? null,
+          })),
           saleId: sale.id,
         };
         savedQrPayment = await manager.save(QrPaymentSale, qrPayment);
@@ -1050,6 +1104,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       return {
         sale,
         saleProducts: savedSaleProducts,
+        saleProductFileNumbers: savedSaleProductFileNumbers,
         voucher: savedVoucher,
         qrPayment: savedQrPayment,
       };
@@ -1152,65 +1207,96 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     return `VEN${legacyCode[1]}/${management}`;
   }
 
-  private async generateNextFileNumber(
+  private async generateNextFileNumbers(
     manager: EntityManager,
-    saleProducts: NormalizedSaleProductDto[],
+    requests: Array<{
+      productId: number;
+      amount: number;
+      requiresFileNumber: boolean;
+    }>,
     management: string,
-  ): Promise<string | null> {
-    const folderProductIds = saleProducts
-      .map((saleProduct) => saleProduct.productId)
-      .filter((productId) => this.folderProductIds.has(productId));
+  ): Promise<string[][]> {
+    const folderRequests = requests.filter(
+      ({ requiresFileNumber }) => requiresFileNumber,
+    );
 
-    if (folderProductIds.length === 0) {
-      return null;
+    if (folderRequests.length === 0) {
+      return requests.map(() => []);
     }
 
-    if (folderProductIds.length > 1) {
+    // trasaccion activa es requerida para asegurar que los locks se mantengan durante la generación de números de folder
+    if (!manager.queryRunner?.isTransactionActive) {
       throw new Error(
-        'No se puede generar un único número de folder para varios tipos de folder.',
+        'La generación de números de folder requiere una transacción activa.',
       );
     }
 
-    const productId = folderProductIds[0];
-    const voucherTablePath = manager.getRepository(Voucher).metadata.tablePath;
+    const productIds = [
+      ...new Set(folderRequests.map(({ productId }) => productId)),
+    ].sort((firstId, secondId) => firstId - secondId);
 
-    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-      `${voucherTablePath}:file-number:${productId}:${management}`,
-    ]);
+    const repository = manager.getRepository(SaleProductFileNumber);
+    const lockNamespace = repository.metadata.tablePath;
 
-    const result = await manager
-      .createQueryBuilder(Voucher, 'voucher')
+    // El orden ascendente evita adquirir los mismos locks en orden inverso.
+    for (const productId of productIds) {
+      const lockKey = [
+        lockNamespace,
+        'file-number',
+        productId,
+        management,
+      ].join(':');
+
+      // Bloqueo de la generación de números de folder para el producto y gestión actual
+      await manager.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [lockKey],
+      );
+    }
+
+    const results = await repository
+      .createQueryBuilder('fileNumber')
       .withDeleted()
-      .innerJoin('voucher.sale', 'sale')
-      .innerJoin('sale.saleProducts', 'saleProduct')
-      .innerJoin('saleProduct.product', 'product')
-      .select(
-        'COALESCE(MAX(CAST(voucher.fileNumber AS BIGINT)), 0)',
-        'maxFileNumber',
-      )
-      .where('product.id = :productId', { productId })
-      .andWhere("voucher.fileNumber ~ '^[0-9]+$'")
-      .andWhere(
-        'EXTRACT(YEAR FROM voucher.createdAt AT TIME ZONE :timeZone) = :management',
-        {
-          timeZone: this.businessTimeZone,
-          management,
-        },
-      )
-      .getRawOne<{ maxFileNumber: string }>();
+      .select('fileNumber.productId', 'productId')
+      .addSelect('MAX(LEFT(fileNumber.fileNumber, 8))', 'maxFileNumber')
+      .where('fileNumber.productId IN (:...productIds)', { productIds })
+      .andWhere('RIGHT(fileNumber.fileNumber, 4) = :management', { management })
+      .groupBy('fileNumber.productId')
+      .getRawMany<{
+        productId: string;
+        maxFileNumber: string;
+      }>();
 
-    const nextFileNumber = Number(result?.maxFileNumber ?? 0) + 1;
+    const lastNumberByProduct = new Map<number, number>(
+      productIds.map((productId) => [productId, 0]),
+    );
 
-    if (
-      !Number.isSafeInteger(nextFileNumber) ||
-      nextFileNumber > 99_999_999
-    ) {
-      throw new Error(
-        `Se alcanzó el límite de números de folder para el producto ${productId}.`,
+    for (const result of results) {
+      lastNumberByProduct.set(
+        Number(result.productId),
+        Number(result.maxFileNumber),
       );
     }
 
-    return String(nextFileNumber).padStart(8, '0');
+    return requests.map(({ productId, amount, requiresFileNumber }) => {
+      if (!requiresFileNumber) {
+        return [];
+      }
+
+      return Array.from({ length: amount }, () => {
+        const nextFileNumber = (lastNumberByProduct.get(productId) ?? 0) + 1;
+
+        if (nextFileNumber > 99_999_999) {
+          throw new Error(
+            `Se alcanzó el límite de números de folder de 8 dígitos para el producto ${productId}.`,
+          );
+        }
+
+        lastNumberByProduct.set(productId, nextFileNumber);
+
+        return `${String(nextFileNumber).padStart(8, '0')}-${management}`;
+      });
+    });
   }
 
   private buildCreateSaleResponse(
@@ -1245,7 +1331,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         identityCardCustomer: createdSale.voucher.identityCardCustomer,
         paymentLocation: createdSale.voucher.paymentLocation,
         receiptNumber: createdSale.voucher.receiptNumber,
-        fileNumber: createdSale.voucher.fileNumber,
         description: createdSale.voucher.description,
         paymentTypeId: saleContext.paymentTypeId,
         paymentTypeState: createdSale.voucher.paymentTypeState,
@@ -1269,6 +1354,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         price: Number(saleProduct.price),
         amount: saleProduct.amount,
         total: Number(saleProduct.total),
+        fileNumbers: saleProduct.fileNumbers.map(
+          (fileNumber: SaleProductFileNumber) => fileNumber.fileNumber,
+        ),
+        fileNumber: saleProduct.fileNumbers[0]?.fileNumber ?? null,
       })),
     };
 
@@ -1750,13 +1839,16 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           id: true,
           name: true,
           amount: true,
+          fileNumbers: {
+            id: true,
+            fileNumber: true,
+          },
         },
         voucher: {
           id: true,
           total: true,
           customer: true,
           identityCardCustomer: true,
-          fileNumber: true,
           depositDate: true,
           paymentType: {
             id: true,
@@ -1768,7 +1860,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         personId,
       },
       relations: {
-        saleProducts: true,
+        saleProducts: {
+          fileNumbers: true,
+        },
         voucher: {
           paymentType: true,
         },
@@ -1783,7 +1877,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       error: false,
       message: 'Registro de ventas obtenido correctamente.',
       data: sales.map((sale) => {
-        const voucher = sale.voucher as unknown as Voucher | null;
+        const voucher = sale.voucher;
 
         return {
           ...sale,
@@ -2092,6 +2186,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
             price: saleProduct?.price,
             amount: saleProduct?.amount,
             productId: saleProduct?.productId,
+            fileNumbers: Array.isArray(saleProduct?.fileNumbers)
+              ? saleProduct.fileNumbers
+              : [],
+            fileNumber: saleProduct?.fileNumber ?? null,
           }))
         : [],
       paymentTypeId: storedData.paymentTypeId,
@@ -2291,12 +2389,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     const normalizedProducts = this.normalizeSaleProducts(data.saleProducts);
 
     const productIds = normalizedProducts.map((item) => item.productId);
-
-    if (new Set(productIds).size !== productIds.length) {
-      return this.buildSaleInputValidationError(
-        'Hay un producto repetido en la venta. Revise la selección.',
-      );
-    }
+    const uniqueProductIds = [...new Set(productIds)];
 
     const [parameter, paymentType, products, personResult] = await Promise.all([
       this.parameterRepository.findOne({
@@ -2306,7 +2399,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         where: { id: paymentTypeId },
       }),
       this.productsRepository.find({
-        where: { id: In(productIds), isActive: true },
+        where: { id: In(uniqueProductIds), isActive: true },
         relations: {
           group: true,
         },
@@ -2344,9 +2437,9 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    if (products.length !== productIds.length) {
+    if (products.length !== uniqueProductIds.length) {
       const existingProductIds = new Set(products.map((product) => product.id));
-      const missingProductIds = productIds.filter(
+      const missingProductIds = uniqueProductIds.filter(
         (productId) => !existingProductIds.has(productId),
       );
 
@@ -2699,8 +2792,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         : {}),
       codMoneda: qrData.codMoneda.trim(),
       importe,
-      glosa: this.normalizeBcbText(
-        qrData.glosa?.trim()),
+      glosa: this.normalizeBcbText(qrData.glosa?.trim()),
       fechaVencimiento: qrData.fechaVencimiento.trim(),
       unicoUso: qrData.unicoUso,
       codigoServicio: qrData.codigoServicio.trim(),
@@ -2834,6 +2926,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           amount: true,
           price: true,
           total: true,
+          fileNumbers: {
+            id: true,
+            fileNumber: true,
+          },
           product: {
             id: true,
             group: {
@@ -2847,7 +2943,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           identityCardCustomer: true,
           paymentLocation: true,
           receiptNumber: true,
-          fileNumber: true,
           description: true,
           paymentTypeState: true,
           depositDate: true,
@@ -2864,6 +2959,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       relations: {
         parameter: true,
         saleProducts: {
+          fileNumbers: true,
           product: {
             group: true,
           },
@@ -2881,7 +2977,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const voucher = sale.voucher as unknown as Voucher | null;
+    const voucher = sale.voucher;
 
     if (!voucher) {
       throw new RpcException({
@@ -2927,7 +3023,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       },
       voucher: {
         receiptNumber: voucher.receiptNumber,
-        fileNumber: voucher.fileNumber,
         description: voucher.description,
         paymentTypeState: voucher.paymentTypeState,
         depositDate: voucher.depositDate
@@ -2948,15 +3043,22 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       currency: {
         symbol: sale.parameter?.currencySymbol ?? null,
       },
-      products: products.map((product) => ({
-        productId: product.product.id,
-        name: product.name,
-        groupName: product.product.group.name.toUpperCase(),
-        fileNumber: voucher.fileNumber,
-        amount: product.amount,
-        price: this.formatAmount(product.price),
-        total: this.formatAmount(product.total),
-      })),
+      products: products.map((product) => {
+        const fileNumbers = (product.fileNumbers ?? []).map(
+          (fileNumber) => fileNumber.fileNumber,
+        );
+
+        return {
+          productId: product.product.id,
+          name: product.name,
+          groupName: product.product.group.name.toUpperCase(),
+          fileNumbers,
+          fileNumber: fileNumbers[0] ?? null,
+          amount: product.amount,
+          price: this.formatAmount(product.price),
+          total: this.formatAmount(product.total),
+        };
+      }),
       totals: {
         productCount: products.length,
         quantity: products.reduce(
@@ -3095,16 +3197,14 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
     const items: SalesListItemReportDto[] = saleProducts.map((saleProduct) => {
       const sale = saleProduct.sale;
-      const voucher = sale?.voucher as unknown as Voucher | null;
+      const voucher = sale?.voucher ?? null;
       const personResult = peopleById.get(Number(sale?.personId));
       const principalCustomer = this.formatPersonName(
         personResult?.data?.fullName,
       );
 
       return {
-        code: sale
-          ? this.formatSaleCode(sale.code, sale.createdAt)
-          : null,
+        code: sale ? this.formatSaleCode(sale.code, sale.createdAt) : null,
         receptionDate: voucher?.createdAt
           ? this.formatDate(voucher.createdAt)
           : null,
@@ -3194,11 +3294,15 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     const to = this.parseReportDate(dateTo, 'end');
 
     if (dateFrom && !from) {
-      throw new BadRequestException(`dateFrom "${dateFrom}" no es una fecha válida.`);
+      throw new BadRequestException(
+        `dateFrom "${dateFrom}" no es una fecha válida.`,
+      );
     }
 
     if (dateTo && !to) {
-      throw new BadRequestException(`dateTo "${dateTo}" no es una fecha válida.`);
+      throw new BadRequestException(
+        `dateTo "${dateTo}" no es una fecha válida.`,
+      );
     }
 
     if (from && to && from.getTime() > to.getTime()) {
@@ -3251,9 +3355,12 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getPersonSalesRecords(personId: number): Promise<any> {
-    const { serviceStatus, data } = await this.nats.firstValue('sales.record.findPerson', {
-      personId,
-    });
+    const { serviceStatus, data } = await this.nats.firstValue(
+      'sales.record.findPerson',
+      {
+        personId,
+      },
+    );
 
     if (!serviceStatus) {
       return {

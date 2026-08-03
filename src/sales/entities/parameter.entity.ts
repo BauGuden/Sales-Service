@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   CreateDateColumn,
   DeleteDateColumn,
@@ -10,12 +11,14 @@ import {
 import { Sale } from './sale.entity';
 
 @Entity('parameters')
+@Check('CHK_parameters_max_amount_product_positive', '"max_amount_product" > 0')
+@Check('CHK_parameters_max_products_positive', '"max_products" > 0')
 export class Parameter {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'max_amount_product', type: 'int', default: 0 })
-  maxAmountProduct: number; // Límite monetario por venta
+  @Column({ name: 'max_amount_product', type: 'int', default: 1 })
+  maxAmountProduct: number; // Cantidad máxima permitida por producto
 
   @Column({ name: 'max_products', type: 'int', default: 1 })
   maxProducts: number; // Límite de items (carrito) por venta
