@@ -1051,7 +1051,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
             fileNumbers: saleProduct.fileNumbers.map(
               (fileNumber) => fileNumber.fileNumber,
             ),
-            fileNumber: saleProduct.fileNumbers[0]?.fileNumber ?? null,
           })),
           saleId: sale.id,
         };
@@ -1782,12 +1781,25 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           .join(',')}`,
       );
 
+    const originEif = String(notification.eifOrigen ?? '').trim();
+    const financialEntityResponse: any = originEif
+      ? await this.nats.firstValue('financialEntities.searchByEif', {
+          eif: originEif,
+        })
+      : null;
+    const financialEntityName =
+      financialEntityResponse?.serviceStatus &&
+      financialEntityResponse?.error !== true &&
+      typeof financialEntityResponse?.data?.name === 'string'
+        ? financialEntityResponse.data.name.trim()
+        : '';
+
     const createdSale = await this.createSaleRecords({
       saleContext,
       voucher: {
         customer: notification.nombreOriginante?.trim(),
         identityCardCustomer: notification.ciNitOriginante?.trim(),
-        paymentLocation: notification.eifOrigen, // analizar
+        paymentLocation: financialEntityName || originEif,
         receiptNumber: notification.idOrdenDestinatario,
         description: qrGlosa,
         depositDate,
@@ -2189,7 +2201,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
             fileNumbers: Array.isArray(saleProduct?.fileNumbers)
               ? saleProduct.fileNumbers
               : [],
-            fileNumber: saleProduct?.fileNumber ?? null,
           }))
         : [],
       paymentTypeId: storedData.paymentTypeId,
@@ -3053,7 +3064,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           name: product.name,
           groupName: product.product.group.name.toUpperCase(),
           fileNumbers,
-          fileNumber: fileNumbers[0] ?? null,
           amount: product.amount,
           price: this.formatAmount(product.price),
           total: this.formatAmount(product.total),
