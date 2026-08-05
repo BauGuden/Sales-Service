@@ -3064,7 +3064,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           name: product.name,
           groupName: product.product.group.name.toUpperCase(),
           fileNumbers,
-          fileNumber: fileNumbers[0] ?? null,
           amount: product.amount,
           price: this.formatAmount(product.price),
           total: this.formatAmount(product.total),
