@@ -13,6 +13,12 @@ import { SalesService } from './sales.service';
 export class SalesController {
   constructor(private readonly salesService: SalesService) {}
 
+
+  @MessagePattern('sales.groupProducts')
+  async productsGroup(@Payload('groupId') groupId: number) {
+    return this.salesService.productsGroup(groupId);
+  }
+
   @MessagePattern('sales.accounts')
   async accounts() {
     return this.salesService.accounts();
