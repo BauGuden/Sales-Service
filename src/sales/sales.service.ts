@@ -161,7 +161,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           name: group.name,
           shortened: group.shortened,
           accountName: account ? account.name : null,
-          accountShortened: account ? account.shortened : null,
+          accountNumber: account ? account.accountNumber : null,
         };
       });
 
@@ -183,10 +183,12 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
   private async getAccountLookupMap(
     accountIds: number[],
-  ): Promise<Map<number, { name: string | null; shortened: string | null }>> {
+  ): Promise<
+    Map<number, { name: string | null; accountNumber: string | null }>
+  > {
     const accountMap = new Map<
       number,
-      { name: string | null; shortened: string | null }
+      { name: string | null; accountNumber: string | null }
     >();
 
     if (accountIds.length === 0) {
@@ -198,7 +200,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         'accounts.findAllByIds',
         {
           ids: accountIds,
-          columns: ['id', 'name', 'shortened'],
+          columns: ['id', 'name', 'accountNumber'],
         },
       );
       const accounts: AccountLookupDataDto[] = Array.isArray(response)
@@ -218,7 +220,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         if (account?.id !== undefined) {
           accountMap.set(account.id, {
             name: account.name ?? null,
-            shortened: account.shortened ?? null,
+            accountNumber: account.accountNumber ?? null,
           });
         }
       });
@@ -346,38 +348,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async financialEntities(): Promise<any> {
-    try {
-      const response: any = await this.nats.firstValue(
-        'financialEntities.findAllForSales',
-        {},
-      );
-
-      if (!response?.serviceStatus) {
-        return {
-          error: true,
-          message: 'Servicio de entidades financieras no disponible',
-          data: null,
-        };
-      }
-
-      return {
-        error: response.error ?? false,
-        message:
-          response.message ?? 'Entidades financieras obtenidas correctamente',
-        data: response.data ?? null,
-      };
-    } catch (error) {
-      this.logError('Error al obtener entidades financieras', error);
-
-      return {
-        error: true,
-        message: 'Servicio de entidades financieras no disponible',
-        data: null,
-      };
-    }
-  }
-
   async paymentTypes(): Promise<any> {
     try {
       const paymentTypes = await this.paymentTypesRepository.find({
@@ -434,19 +404,13 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
   async dataForSale(): Promise<any> {
     try {
-      const [paymentTypesResult, financialEntitiesResult] = await Promise.all([
-        this.paymentTypes(),
-        this.financialEntities(),
-      ]);
+      const [paymentTypesResult] = await Promise.all([this.paymentTypes()]);
 
-      const error = paymentTypesResult.error || financialEntitiesResult.error;
+      const error = paymentTypesResult.error;
 
       if (error) {
         const messages = [
           paymentTypesResult.error ? paymentTypesResult.message : null,
-          financialEntitiesResult.error
-            ? financialEntitiesResult.message
-            : null,
         ]
           .filter(Boolean)
           .join('; ');
@@ -463,7 +427,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         message: 'Datos para la venta obtenidos correctamente',
         data: {
           paymentTypes: paymentTypesResult.data,
-          financialEntities: financialEntitiesResult.data,
         },
       };
     } catch (error) {
@@ -596,35 +559,25 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
         };
       }
 
-      const [
-        personResult,
-        groupsResult,
-        parametersResult,
-        paymentTypesResult,
-        financialEntitiesResult,
-      ] = await Promise.all([
-        this.personDetails(personUuid),
-        this.groups(),
-        this.parameters(),
-        this.paymentTypes(),
-        this.financialEntities(),
-      ]);
+      const [personResult, groupsResult, parametersResult, paymentTypesResult] =
+        await Promise.all([
+          this.personDetails(personUuid),
+          this.groups(),
+          this.parameters(),
+          this.paymentTypes(),
+        ]);
 
       if (
         personResult.error ||
         groupsResult.error ||
         parametersResult.error ||
-        paymentTypesResult.error ||
-        financialEntitiesResult.error
+        paymentTypesResult.error
       ) {
         const messages = [
           personResult.error ? personResult.message : null,
           groupsResult.error ? groupsResult.message : null,
           parametersResult.error ? parametersResult.message : null,
           paymentTypesResult.error ? paymentTypesResult.message : null,
-          financialEntitiesResult.error
-            ? financialEntitiesResult.message
-            : null,
         ]
           .filter(Boolean)
           .join('; ');
@@ -644,7 +597,6 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
           groups: groupsResult.data ?? [],
           parameters: parametersResult.data,
           paymentTypes: paymentTypesResult.data ?? [],
-          financialEntities: financialEntitiesResult.data,
         },
       };
     } catch (error) {
