@@ -1783,8 +1783,10 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
 
     const originEif = String(notification.eifOrigen ?? '').trim();
     const financialEntityResponse: any = originEif
-      ? await this.nats.firstValue('financialEntities.searchByEif', {
-          eif: originEif,
+      ? await this.nats.firstValue('financialEntities.searchByColumn', {
+          columns: ['name'],
+          filterColumn: 'eif',
+          value: originEif,
         })
       : null;
     const financialEntityName =
