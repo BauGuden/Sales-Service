@@ -1020,7 +1020,7 @@ export class CreateSalesSchemaAndCoreTables1763052000000
             isNullable: false,
           },
           {
-            name: "number_folder",
+            name: "file_number",
             type: "varchar",
             length: "13",
             isNullable: false,
@@ -1046,13 +1046,13 @@ export class CreateSalesSchemaAndCoreTables1763052000000
         checks: [
           new TableCheck({
             name: "CHK_sale_product_file_numbers_format",
-            expression: "\"number_folder\" ~ '^[0-9]{8}-[0-9]{4}$'",
+            expression: "\"file_number\" ~ '^[0-9]{8}-[0-9]{4}$'",
           }),
         ],
         uniques: [
           new TableUnique({
             name: "UQ_sale_product_file_numbers_product_number",
-            columnNames: ["product_id", "number_folder"],
+            columnNames: ["product_id", "file_number"],
           }),
         ],
       })
@@ -1089,8 +1089,8 @@ export class CreateSalesSchemaAndCoreTables1763052000000
       `CREATE INDEX IF NOT EXISTS "IDX_sale_product_file_numbers_product_management_sequence"
        ON "${this.schema}"."sale_product_file_numbers" (
          "product_id",
-         (RIGHT("number_folder", 4)),
-         (LEFT("number_folder", 8)) DESC
+         (RIGHT("file_number", 4)),
+         (LEFT("file_number", 8)) DESC
        )`
     );
 
