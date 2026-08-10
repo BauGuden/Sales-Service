@@ -20,7 +20,7 @@ import { SaleProduct } from './sale-product.entity';
 ])
 @Check(
   'CHK_sale_product_file_numbers_format',
-  '"number_folder" ~ \'^[0-9]{8}-[0-9]{4}$\'',
+  '"file_number" ~ \'^[0-9]{8}-[0-9]{4}$\'',
 )
 @Index('IDX_sale_product_file_numbers_sale_product_product', [
   'saleProductId',
@@ -61,7 +61,7 @@ export class SaleProductFileNumber {
   @Column({ name: 'product_id', type: 'int' })
   productId: number;
 
-  @Column({ name: 'number_folder', length: 13 })
+  @Column({ name: 'file_number', length: 13 })
   fileNumber: string;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
