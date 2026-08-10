@@ -18,6 +18,6 @@ export class AccountLookupDataDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(50)
-  shortened: string | null;
+  @MaxLength(30)
+  accountNumber: string | null;
 }

@@ -26,6 +26,6 @@ export class GroupDataDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(50)
-  accountShortened: string | null;
+  @MaxLength(30)
+  accountNumber: string | null;
 }
