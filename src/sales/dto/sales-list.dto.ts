@@ -12,6 +12,17 @@ export class SalesListDto extends PaginationDto {
   dateTo?: string;
 }
 
+export class SalesListProductReportDto {
+  @IsString()
+  name: string;
+
+  @Type(() => Number)
+  amount: number;
+
+  @IsString()
+  price: string;
+}
+
 export class SalesListItemReportDto {
   @IsString()
   code: string | null;
@@ -30,6 +41,9 @@ export class SalesListItemReportDto {
 
   @IsString()
   price: string;
+
+  @Type(() => SalesListProductReportDto)
+  products: SalesListProductReportDto[];
 
   @IsString()
   paymentType: string;

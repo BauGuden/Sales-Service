@@ -1455,15 +1455,7 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
   ): Promise<any> {
     try {
       const qrId = notification.idQR;
-
-      if (!qrId) {
-        return {
-          error: true,
-          message: 'La notificación BCB no contiene idQR.',
-          data: null,
-        };
-      }
-
+      
       const qrPayment = await this.qrPaymentSaleRepository.findOne({
         where: { qrId },
       });
@@ -3077,65 +3069,61 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       dateRange.to,
     );
     const where = {
-      sale: {
-        saleState: SaleState.VIGENTE,
-        ...(voucherCreatedAt
-          ? {
-              voucher: {
-                createdAt: voucherCreatedAt,
-              },
-            }
-          : {}),
-      },
+      saleState: SaleState.VIGENTE,
+      ...(voucherCreatedAt
+        ? {
+            voucher: {
+              createdAt: voucherCreatedAt,
+            },
+          }
+        : {}),
     };
 
-    const [saleProducts, totalItems] =
-      await this.saleProductsRepository.findAndCount({
+    const [sales, totalItems] = await Promise.all([
+      this.salesRepository.find({
         select: {
           id: true,
-          name: true,
-          amount: true,
-          price: true,
-          total: true,
-          sale: {
+          code: true,
+          createdAt: true,
+          saleState: true,
+          personId: true,
+          receptionist: true,
+          parameter: {
             id: true,
-            code: true,
+            currencySymbol: true,
+          },
+          voucher: {
+            id: true,
             createdAt: true,
-            saleState: true,
-            personId: true,
-            receptionist: true,
-            parameter: {
+            total: true,
+            paymentType: {
               id: true,
-              currencySymbol: true,
+              name: true,
             },
-            voucher: {
-              id: true,
-              createdAt: true,
-              total: true,
-              paymentType: {
-                id: true,
-                name: true,
-              },
-            },
+          },
+          saleProducts: {
+            id: true,
+            name: true,
+            amount: true,
+            price: true,
           },
         },
         where,
         relations: {
-          sale: {
-            parameter: true,
-            voucher: {
-              paymentType: true,
-            },
+          parameter: true,
+          voucher: {
+            paymentType: true,
           },
+          saleProducts: true,
         },
         order: {
-          sale: {
-            voucher: {
-              createdAt: 'ASC',
-            },
-            id: 'DESC',
+          voucher: {
+            createdAt: 'ASC',
           },
-          id: 'ASC',
+          id: 'DESC',
+          saleProducts: {
+            id: 'ASC',
+          },
         },
         ...(hasLimit
           ? {
@@ -3143,12 +3131,14 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
               take: normalizedLimit,
             }
           : {}),
-      });
+      }),
+      this.salesRepository.count({ where }),
+    ]);
 
     const personIds = [
       ...new Set(
-        saleProducts
-          .map((saleProduct) => saleProduct.sale?.personId)
+        sales
+          .map((sale) => sale.personId)
           .filter((personId) => Number.isInteger(Number(personId))),
       ),
     ];
@@ -3159,23 +3149,42 @@ export class SalesService implements OnModuleInit, OnModuleDestroy {
       personIds.map((personId, index) => [Number(personId), people[index]]),
     );
 
-    const items: SalesListItemReportDto[] = saleProducts.map((saleProduct) => {
-      const sale = saleProduct.sale;
+    const items: SalesListItemReportDto[] = sales.map((sale) => {
       const voucher = sale?.voucher ?? null;
       const personResult = peopleById.get(Number(sale?.personId));
       const principalCustomer = this.formatPersonName(
         personResult?.data?.fullName,
       );
+      const saleProducts = sale.saleProducts ?? [];
+      const prices = [
+        ...new Set(
+          saleProducts.map((saleProduct) =>
+            this.formatAmount(saleProduct.price),
+          ),
+        ),
+      ];
+      const products = saleProducts.map((saleProduct) => ({
+        name: saleProduct.name,
+        amount: Number(saleProduct.amount ?? 0),
+        price: this.formatAmount(saleProduct.price),
+      }));
 
       return {
-        code: sale ? this.formatSaleCode(sale.code, sale.createdAt) : null,
+        code: this.formatSaleCode(sale.code, sale.createdAt),
         receptionDate: voucher?.createdAt
           ? this.formatDate(voucher.createdAt)
           : null,
         principalCustomer,
-        service: saleProduct.name,
-        amount: Number(saleProduct.amount ?? 0),
-        price: this.formatAmount(saleProduct.price),
+        service: products
+          .map((product) => product.name)
+          .filter(Boolean)
+          .join(' / '),
+        amount: products.reduce(
+          (total, product) => total + product.amount,
+          0,
+        ),
+        price: prices.join(' / '),
+        products,
         paymentType: voucher?.paymentType?.name ?? '',
         total: `${this.formatAmount(voucher?.total ?? null)} ${
           sale?.parameter?.currencySymbol ?? ''
